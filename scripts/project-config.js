@@ -35,10 +35,6 @@ function projectConfig(cwd = process.cwd()) {
     logging: {
       directory: local.logging?.directory || 'tmp/logs',
     },
-    commands: {
-      checkpoint: local.commands?.checkpoint || 'node node_modules/reusable-scripts/scripts/checkpoint-codex-changes.js',
-      cleanup: local.commands?.cleanup || 'node node_modules/reusable-scripts/scripts/cleanup-merged-branches.js',
-    },
   };
 
   if (!Array.isArray(config.tests.commands) || config.tests.commands.some(

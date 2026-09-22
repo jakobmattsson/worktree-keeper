@@ -88,7 +88,8 @@ function buildResponse(event) {
       + 'descriptive single-line subject and a body separated from it by a blank line. '
       + 'The body should explain what the commit does in enough detail for its scope, using '
       + 'between one and ten sentences; avoid unnecessary verbosity, but explain substantial '
-      + `changes thoroughly. Run \`${config.commands.checkpoint} `
+      + 'changes thoroughly. Run `node node_modules/reusable-scripts/bin/reusable-scripts.js '
+      + 'checkpoint-codex-changes '
       + '--subject "<subject>" --body "<body paragraph>"`; repeat `--body` for additional '
       + 'paragraphs when useful. '
       + 'Do not make unrelated changes. '

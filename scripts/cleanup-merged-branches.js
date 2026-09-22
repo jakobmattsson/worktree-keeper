@@ -288,7 +288,7 @@ function applyPlan(repositoryRoot, plan, execute, log = console.log) {
   if (!execute) {
     log('');
     log('To apply this cleanup, run:');
-    log(`  ${projectConfig(repositoryRoot).commands.cleanup} --execute`);
+    log('  node node_modules/reusable-scripts/bin/reusable-scripts.js cleanup-merged-branches --execute');
   }
 }
 

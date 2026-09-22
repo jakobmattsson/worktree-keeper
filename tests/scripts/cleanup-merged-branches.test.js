@@ -73,7 +73,7 @@ test('dry-run is the default and does not remove anything', (t) => {
   assert.match(output, /Would remove worktree .*feature-worktree/);
   assert.match(output, /Would delete local branch merged-feature/);
   assert.match(output, /Would delete remote branch origin\/merged-feature/);
-  assert.match(output, /To apply this cleanup, run:\n {2}node node_modules\/reusable-scripts\/scripts\/cleanup-merged-branches.js --execute/);
+  assert.match(output, /To apply this cleanup, run:\n {2}node node_modules\/reusable-scripts\/bin\/reusable-scripts.js cleanup-merged-branches --execute/);
   assert.equal(fs.existsSync(fixture.worktree), true);
   assert.equal(git(fixture.repository, 'rev-parse', 'origin/main'), expectedOriginMain);
   assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), true);
@@ -167,13 +167,12 @@ test('branch cleanup uses the caller configured remote and default branch', (t) 
   git(fixture.repository, 'update-ref', '-d', 'refs/remotes/upstream/main');
   fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
     git: { remote: 'upstream', mainBranch: 'trunk' },
-    commands: { cleanup: 'custom-cleanup' },
   }));
 
   const output = runScript(fixture.repository);
 
   assert.match(output, /Fetching and pruning upstream/);
   assert.match(output, /Would delete remote branch upstream\/merged-feature/);
-  assert.match(output, /To apply this cleanup, run:\n {2}custom-cleanup --execute/);
+  assert.match(output, /To apply this cleanup, run:\n {2}node node_modules\/reusable-scripts\/bin\/reusable-scripts.js cleanup-merged-branches --execute/);
   assert.doesNotMatch(output, /delete (local|remote) branch trunk/);
 });
