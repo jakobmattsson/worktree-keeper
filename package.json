@@ -2,6 +2,7 @@
   "name": "worktree-keeper",
   "version": "0.6.0",
   "description": "Shared repository test, Git worktree, and Codex hook commands",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jakobmattsson/worktree-keeper.git"

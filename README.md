@@ -108,11 +108,10 @@ private.
 
 Before publishing:
 
-1. Decide whether to add a license. Public downloads do not themselves grant
-   others permission to modify or redistribute the code.
+1. Confirm that the MIT license and copyright holder in `LICENSE` are correct.
 2. Review `npm pack --dry-run --json` for sensitive or unnecessary files. The
    expected tarball contains the CLI, the `scripts/` directory, `README.md`,
-   and `package.json`; tests are excluded.
+   `LICENSE`, and `package.json`; tests are excluded.
 3. Run `npm test` and test the packed CLI from a separate temporary project.
 4. Sign in to the npm account that should own the unscoped package and enable
    two-factor authentication. Publish the first version manually only after
@@ -124,5 +123,5 @@ Before publishing:
 
 Trusted publishing from GitHub Actions can be added after the first release.
 It requires a configured trusted publisher on npm and a workflow with OIDC
-permission. npm does not currently generate provenance for a public package
-published from a private Git repository.
+permission. A public Git repository allows npm to generate provenance for
+releases published through that workflow.
