@@ -143,9 +143,9 @@ function checkpoint(repositoryRoot, message, log = console.log) {
     branch = runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], {
       cwd: repositoryRoot,
     });
-    const { mainBranch, remote } = projectConfig(repositoryRoot).git;
-    if (branch === mainBranch) {
-      throw new Error(`refusing to checkpoint changes directly on ${mainBranch}`);
+    const { defaultBranch, remote } = projectConfig(repositoryRoot).git;
+    if (branch === defaultBranch) {
+      throw new Error(`refusing to checkpoint changes directly on ${defaultBranch}`);
     }
 
     const conflicts = runGit(['diff', '--name-only', '--diff-filter=U'], {

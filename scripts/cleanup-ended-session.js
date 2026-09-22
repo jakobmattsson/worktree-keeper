@@ -67,23 +67,23 @@ function captureTarget(event) {
   if (isPrimaryWorktree(event.cwd)) {
     return null;
   }
-  const { mainBranch } = projectConfig(event.cwd).git;
+  const { defaultBranch } = projectConfig(event.cwd).git;
 
   const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], event.cwd);
-  if (!branch || branch === mainBranch) {
+  if (!branch || branch === defaultBranch) {
     return null;
   }
 
   const objectId = runGit(['rev-parse', `refs/heads/${branch}`], { cwd: event.cwd });
   const worktrees = listWorktrees(event.cwd);
   const sessionWorktree = worktrees.find((item) => samePath(item.path, event.cwd));
-  const mainWorktree = worktrees.find((item) => item.branch === `refs/heads/${mainBranch}`);
+  const defaultWorktree = worktrees.find((item) => item.branch === `refs/heads/${defaultBranch}`);
 
   if (!sessionWorktree || sessionWorktree.branch !== `refs/heads/${branch}`) {
     return null;
   }
-  if (!mainWorktree) {
-    throw new Error(`could not find the worktree for ${mainBranch}`);
+  if (!defaultWorktree) {
+    throw new Error(`could not find the worktree for ${defaultBranch}`);
   }
 
   const commonGitDirectory = runGit([
@@ -96,17 +96,17 @@ function captureTarget(event) {
     branch,
     commonGitDirectory,
     objectId,
-    repositoryRoot: mainWorktree.path,
+    repositoryRoot: defaultWorktree.path,
     sessionId: event.session_id || null,
     worktreePath: sessionWorktree.path,
   };
 }
 
-function fastForwardPrimaryMain(repositoryRoot, log) {
+function fastForwardPrimaryDefaultBranch(repositoryRoot, log) {
   const primaryRoot = sourceRepositoryRoot(repositoryRoot);
-  const { remote, mainBranch } = projectConfig(primaryRoot).git;
+  const { remote, defaultBranch } = projectConfig(primaryRoot).git;
   const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], primaryRoot);
-  if (branch !== mainBranch) {
+  if (branch !== defaultBranch) {
     return false;
   }
 
@@ -114,29 +114,29 @@ function fastForwardPrimaryMain(repositoryRoot, log) {
     cwd: primaryRoot,
   });
   if (status !== '') {
-    log(`Keep ${mainBranch}: the primary worktree has changes.`);
+    log(`Keep ${defaultBranch}: the primary worktree has changes.`);
     return false;
   }
 
-  const remoteMain = runGit(['rev-parse', `refs/remotes/${remote}/${mainBranch}`], {
+  const remoteTip = runGit(['rev-parse', `refs/remotes/${remote}/${defaultBranch}`], {
     cwd: primaryRoot,
   });
-  const localMain = runGit(['rev-parse', 'HEAD'], { cwd: primaryRoot });
-  if (localMain === remoteMain) {
+  const localTip = runGit(['rev-parse', 'HEAD'], { cwd: primaryRoot });
+  if (localTip === remoteTip) {
     return false;
   }
-  if (tryGit(['merge-base', '--is-ancestor', 'HEAD', remoteMain], primaryRoot) === null) {
-    log(`Keep ${mainBranch}: it cannot fast-forward to ${remote}/${mainBranch}.`);
+  if (tryGit(['merge-base', '--is-ancestor', 'HEAD', remoteTip], primaryRoot) === null) {
+    log(`Keep ${defaultBranch}: it cannot fast-forward to ${remote}/${defaultBranch}.`);
     return false;
   }
 
-  log(`Fast-forwarding ${mainBranch} in the primary worktree to ${remote}/${mainBranch}.`);
-  runGit(['merge', '--ff-only', remoteMain], { cwd: primaryRoot });
+  log(`Fast-forwarding ${defaultBranch} in the primary worktree to ${remote}/${defaultBranch}.`);
+  runGit(['merge', '--ff-only', remoteTip], { cwd: primaryRoot });
   return true;
 }
 
 function cleanupTarget(target, log = console.log) {
-  const { remote, mainBranch } = projectConfig(target.repositoryRoot).git;
+  const { remote, defaultBranch } = projectConfig(target.repositoryRoot).git;
   const branchRef = `refs/heads/${target.branch}`;
   const currentObjectId = tryGit(['show-ref', '--hash', '--verify', branchRef], target.repositoryRoot);
 
@@ -175,16 +175,16 @@ function cleanupTarget(target, log = console.log) {
 
   log(`Fetching ${remote} before checking ${target.branch}.`);
   runGit(['fetch', '--prune', remote], { cwd: target.repositoryRoot });
-  runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${mainBranch}`], {
+  runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${defaultBranch}`], {
     cwd: target.repositoryRoot,
   });
-  fastForwardPrimaryMain(target.repositoryRoot, log);
+  fastForwardPrimaryDefaultBranch(target.repositoryRoot, log);
 
   const item = buildPlan(target.repositoryRoot)
     .find((candidate) => candidate.branch === target.branch);
 
   if (!item?.local || item.localObjectId !== target.objectId) {
-    log(`Keep ${target.branch}: it is not fully merged into ${remote}/${mainBranch}.`);
+    log(`Keep ${target.branch}: it is not fully merged into ${remote}/${defaultBranch}.`);
     return false;
   }
   if (item.skipReason) {

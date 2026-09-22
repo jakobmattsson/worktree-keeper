@@ -19,8 +19,8 @@ function projectConfig(cwd = process.cwd()) {
     root,
     git: {
       remote: local.git?.remote || 'origin',
-      mainBranch: local.git?.mainBranch || 'main',
-      taskBranchPrefix: local.git?.taskBranchPrefix || 'codex/',
+      defaultBranch: local.git?.defaultBranch || 'main',
+      branchPrefix: local.git?.branchPrefix || 'codex/',
     },
     tests: {
       commands: local.tests?.commands || [
@@ -32,9 +32,7 @@ function projectConfig(cwd = process.cwd()) {
       receiptDirectory: local.tests?.receiptDirectory || 'reusable-scripts-test-receipts',
       rerunCommand: local.tests?.rerunCommand || 'npm test -- rerun',
     },
-    logging: {
-      directory: local.logging?.directory || 'tmp/logs',
-    },
+    loggingDirectory: local.loggingDirectory || 'tmp/logs',
   };
 
   if (!Array.isArray(config.tests.commands) || config.tests.commands.some(

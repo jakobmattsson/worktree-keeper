@@ -10,8 +10,8 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
 {
   "git": {
     "remote": "origin",
-    "mainBranch": "main",
-    "taskBranchPrefix": "codex/"
+    "defaultBranch": "main",
+    "branchPrefix": "codex/"
   },
   "tests": {
     "commands": [["npm", "run", "lint"], ["node", "--test"]],
@@ -20,7 +20,7 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
     "receiptDirectory": "reusable-scripts-test-receipts",
     "rerunCommand": "npm test -- rerun"
   },
-  "logging": { "directory": "tmp/logs" }
+  "loggingDirectory": "tmp/logs"
 }
 ```
 

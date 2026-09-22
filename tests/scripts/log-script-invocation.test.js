@@ -48,6 +48,9 @@ test('source repository root is the primary worktree', (t) => {
 
 test('invocation log is stored in the source repository with every argument', (t) => {
   const fixture = createWorktree(t);
+  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
+    loggingDirectory: 'custom/logs',
+  }));
   const argv = [
     '/usr/local/bin/node',
     '/path with spaces/checkpoint-codex-stop.js',
@@ -66,7 +69,7 @@ test('invocation log is stored in the source repository with every argument', (t
     logPath,
     path.join(
       fs.realpathSync(fixture.repository),
-      'tmp',
+      'custom',
       'logs',
       '2026-09-20T12-34-56.789Z-checkpoint-codex-stop.js-1234.log',
     ),

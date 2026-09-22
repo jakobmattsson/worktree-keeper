@@ -138,6 +138,37 @@ test('checkpoint refuses the primary worktree without recording a hook failure',
   assert.equal(fs.existsSync(markerPath(fixture.primaryRepository)), false);
 });
 
+test('checkpoint protects the caller configured default branch', (t) => {
+  const fixture = createRepository(t);
+  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
+    git: { defaultBranch: 'codex/test-checkpoint' },
+  }));
+
+  assert.throws(
+    () => checkpoint(fixture.repository, {
+      subject: 'Unsafe checkpoint',
+      bodyParagraphs: ['Do not commit on the configured default branch.'],
+    }, () => {}),
+    /refusing to checkpoint changes directly on codex\/test-checkpoint/,
+  );
+});
+
+test('Stop uses the caller configured branch prefix for a detached worktree', (t) => {
+  const fixture = createRepository(t);
+  git(fixture.repository, 'switch', '--detach');
+  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
+    git: { branchPrefix: 'work/' },
+  }));
+
+  const response = buildResponse({
+    cwd: fixture.repository,
+    hook_event_name: 'Stop',
+    stop_hook_active: false,
+  });
+
+  assert.match(response.reason, /named with the work\/ prefix/);
+});
+
 test('Stop ignores changes in the primary worktree', (t) => {
   const fixture = createRepository(t);
   fs.writeFileSync(path.join(fixture.primaryRepository, 'file.txt'), 'changed\n');

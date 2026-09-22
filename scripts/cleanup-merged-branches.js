@@ -68,10 +68,10 @@ function parseArguments(args) {
 }
 
 function mergedBranches(repositoryRoot, namespace) {
-  const { remote, mainBranch } = projectConfig(repositoryRoot).git;
+  const { remote, defaultBranch } = projectConfig(repositoryRoot).git;
   const output = runGit([
     'for-each-ref',
-    `--merged=refs/remotes/${remote}/${mainBranch}`,
+    `--merged=refs/remotes/${remote}/${defaultBranch}`,
     '--format=%(refname)\t%(objectname)\t%(symref)',
     namespace,
   ], { cwd: repositoryRoot });
@@ -132,7 +132,7 @@ function branchNameFromRemoteRef(refName, remote) {
 }
 
 function buildPlan(repositoryRoot) {
-  const { remote, mainBranch } = projectConfig(repositoryRoot).git;
+  const { remote, defaultBranch } = projectConfig(repositoryRoot).git;
   const localBranches = new Map(
     mergedBranches(repositoryRoot, 'refs/heads')
       .map(({ refName, objectId }) => [branchNameFromLocalRef(refName), objectId]),
@@ -143,8 +143,8 @@ function buildPlan(repositoryRoot) {
       .filter(([branch]) => branch !== 'HEAD'),
   );
 
-  localBranches.delete(mainBranch);
-  remoteBranches.delete(mainBranch);
+  localBranches.delete(defaultBranch);
+  remoteBranches.delete(defaultBranch);
 
   const currentRoot = runGit(['rev-parse', '--show-toplevel'], {
     cwd: repositoryRoot,
@@ -313,9 +313,9 @@ function main() {
   console.log(`Fetching and pruning ${projectConfig(repositoryRoot).git.remote} before building the cleanup plan.`);
 
   try {
-    const { remote, mainBranch } = projectConfig(repositoryRoot).git;
+    const { remote, defaultBranch } = projectConfig(repositoryRoot).git;
     runGit(['fetch', '--prune', remote], { cwd: repositoryRoot });
-    runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${mainBranch}`], {
+    runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${defaultBranch}`], {
       cwd: repositoryRoot,
     });
   } catch (error) {

@@ -166,7 +166,7 @@ test('branch cleanup uses the caller configured remote and default branch', (t) 
   git(fixture.repository, 'push', 'upstream', 'trunk');
   git(fixture.repository, 'update-ref', '-d', 'refs/remotes/upstream/main');
   fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
-    git: { remote: 'upstream', mainBranch: 'trunk' },
+    git: { remote: 'upstream', defaultBranch: 'trunk' },
   }));
 
   const output = runScript(fixture.repository);

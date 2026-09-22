@@ -72,9 +72,9 @@ function buildResponse(event) {
     ['symbolic-ref', '--quiet', '--short', 'HEAD'],
     { cwd: event.cwd, encoding: 'utf8' },
   );
-  const branchInstruction = branch.status === 0 && branch.stdout.trim() !== config.git.mainBranch
+  const branchInstruction = branch.status === 0 && branch.stdout.trim() !== config.git.defaultBranch
     ? ''
-    : ` First create and switch to a descriptive task branch named with the ${config.git.taskBranchPrefix} prefix.`;
+    : ` First create and switch to a descriptive task branch named with the ${config.git.branchPrefix} prefix.`;
   const failureInstruction = failure
     ? ` The previous checkpoint failed with: ${failure.error}. Resolve that failure first.`
     : '';
