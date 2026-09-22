@@ -26,7 +26,7 @@ function projectConfig(cwd = process.cwd()) {
       commands: local.tests?.commands || ['npm run lint', 'node --test'],
       excludedPaths: local.tests?.excludedPaths || [],
       receiptMaxAgeMinutes: local.tests?.receiptMaxAgeMinutes ?? 60,
-      rerunCommand: local.tests?.rerunCommand || 'npm test -- rerun',
+      npmTestUsesRunner: local.tests?.npmTestUsesRunner ?? false,
     },
     loggingDirectory: local.loggingDirectory || 'tmp/logs',
   };
@@ -44,6 +44,9 @@ function projectConfig(cwd = process.cwd()) {
   if (!Number.isSafeInteger(config.tests.receiptMaxAgeMinutes)
       || config.tests.receiptMaxAgeMinutes < 1) {
     throw new Error(`${file}: tests.receiptMaxAgeMinutes must be a positive integer`);
+  }
+  if (typeof config.tests.npmTestUsesRunner !== 'boolean') {
+    throw new Error(`${file}: tests.npmTestUsesRunner must be a boolean`);
   }
   return config;
 }

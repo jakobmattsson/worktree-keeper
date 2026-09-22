@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { checkReceipt, matchesReceipt } = require('../../scripts/check-test-receipt');
+const { checkReceipt, matchesReceipt, successMessage } = require('../../scripts/check-test-receipt');
 const { recordReceipt } = require('../../scripts/record-test-receipt');
 const { receiptPath } = require('../../scripts/receipt-state');
 
@@ -33,6 +33,7 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   const receipt = recordReceipt(root);
   assert.equal(receipt.changedFiles.length, 2);
   assert.equal(checkReceipt(root), true);
+  assert.equal(successMessage(root), 'Tests already passed for this change set. In order to rerun tests anyway, use: node node_modules/reusable-scripts/bin/reusable-scripts.js run-tests rerun');
   assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 59_000 }, root), true);
   assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 61_000 }, root), false);
 
@@ -88,12 +89,12 @@ test('npm test reuses a receipt and reruns after changes, on request, or in CI',
   }
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
     private: true,
-    scripts: { lint: 'node -e ""' },
+    scripts: { lint: 'node -e ""', test: 'node scripts/run-tests.js' },
   }));
   fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify({
     tests: {
       commands: ['node --test "tests/example test.js"'],
-      rerunCommand: 'node custom-rerun.js',
+      npmTestUsesRunner: true,
     },
   }));
   const testPath = path.join(root, 'tests', 'example test.js');
@@ -118,8 +119,8 @@ test('npm test reuses a receipt and reruns after changes, on request, or in CI',
     cwd: root,
     encoding: 'utf8',
     env: { ...process.env, CI: '' },
-  }), 'Tests already passed for this change set. In order to rerun tests anyway, use: node custom-rerun.js\n');
-  assert.equal(runTests(), 'Tests already passed for this change set. In order to rerun tests anyway, use: node custom-rerun.js\n');
+  }), 'Tests already passed for this change set. In order to rerun tests anyway, use: npm test -- rerun\n');
+  assert.equal(runTests(), 'Tests already passed for this change set. In order to rerun tests anyway, use: npm test -- rerun\n');
   assert.equal(fs.readFileSync(counterPath, 'utf8'), 'x');
   runTests(['rerun']);
   assert.equal(fs.readFileSync(counterPath, 'utf8'), 'xx');

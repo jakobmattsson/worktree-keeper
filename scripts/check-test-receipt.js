@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const { ROOT, environmentFingerprint, receiptPath, snapshot } = require('./receipt-state');
 const { projectConfig } = require('./project-config');
 function successMessage(root = ROOT()) {
-  return `Tests already passed for this change set. In order to rerun tests anyway, use: ${projectConfig(root).tests.rerunCommand}`;
+  const command = projectConfig(root).tests.npmTestUsesRunner
+    ? 'npm test -- rerun'
+    : 'node node_modules/reusable-scripts/bin/reusable-scripts.js run-tests rerun';
+  return `Tests already passed for this change set. In order to rerun tests anyway, use: ${command}`;
 }
 
 function matchesReceipt(receipt, root = ROOT()) {
