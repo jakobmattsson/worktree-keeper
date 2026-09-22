@@ -16,7 +16,7 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
   "tests": {
     "commands": ["npm run lint", "node --test"],
     "excludedPaths": ["data/source/"],
-    "receiptMaxAgeMs": 3600000,
+    "receiptMaxAgeMinutes": 60,
     "rerunCommand": "npm test -- rerun"
   },
   "loggingDirectory": "tmp/logs"

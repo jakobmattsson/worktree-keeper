@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { checkReceipt } = require('../../scripts/check-test-receipt');
+const { checkReceipt, matchesReceipt } = require('../../scripts/check-test-receipt');
 const { recordReceipt } = require('../../scripts/record-test-receipt');
 const { receiptPath } = require('../../scripts/receipt-state');
 
@@ -21,7 +21,7 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   git(root, 'init', '-q');
   fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\n');
   fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify({
-    tests: { excludedPaths: ['data/layer-1-originals/'] },
+    tests: { excludedPaths: ['data/layer-1-originals/'], receiptMaxAgeMinutes: 1 },
   }));
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'original\n');
   git(root, 'add', '.gitignore', 'tracked.txt', 'reusable-scripts.config.json');
@@ -33,6 +33,8 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   const receipt = recordReceipt(root);
   assert.equal(receipt.changedFiles.length, 2);
   assert.equal(checkReceipt(root), true);
+  assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 59_000 }, root), true);
+  assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 61_000 }, root), false);
 
   git(root, 'add', 'new.txt');
   git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Tested contents');

@@ -8,9 +8,9 @@ function successMessage(root = ROOT()) {
 }
 
 function matchesReceipt(receipt, root = ROOT()) {
-  const { receiptMaxAgeMs } = projectConfig(root).tests;
+  const { receiptMaxAgeMinutes } = projectConfig(root).tests;
   if (!receipt || receipt.version !== 1 || !Number.isFinite(receipt.passedAt) ||
-      Date.now() < receipt.passedAt || Date.now() - receipt.passedAt > receiptMaxAgeMs ||
+      Date.now() < receipt.passedAt || Date.now() - receipt.passedAt > receiptMaxAgeMinutes * 60_000 ||
       receipt.environment !== environmentFingerprint()) return false;
   const current = snapshot(root, receipt.baseCommit);
   return JSON.stringify(current.changedFiles) === JSON.stringify(receipt.changedFiles);
