@@ -1,7 +1,15 @@
 {
   "name": "reusable-scripts",
   "version": "0.6.0",
-  "private": true,
+  "description": "Shared repository test, Git worktree, and Codex hook commands",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jakobmattsson/reusable-scripts.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "bin": {
     "reusable-scripts": "bin/reusable-scripts.js"
   },

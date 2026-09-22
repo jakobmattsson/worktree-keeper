@@ -4,11 +4,11 @@ Node.js scripts for Codex Git worktree hooks, merged branch cleanup, and cached 
 
 ## Recommended caller setup
 
-This example follows the working `fonden` setup. Add the three files below to the calling project. Replace the Git branch settings and test commands with that project's values. The `reusable-scripts` dependency is a private Git repository, so the machine installing it needs SSH access to GitHub.
+This example follows the working `fonden` setup. Add the three files below to the calling project. Replace the Git branch settings and test commands with that project's values. Once the package is published, install it from npm; no GitHub SSH access is needed for the dependency.
 
 ### 1. `package.json`
 
-Include these entries in the caller's `package.json`, alongside its other scripts and dependencies. Pin the Git dependency to a full commit hash so installs use the same version. The hash below selects version 0.6.0; change it deliberately when upgrading. The `lint` script and ESLint dependency are needed only for the `eslint .` test command in this example.
+Include these entries in the caller's `package.json`, alongside its other scripts and dependencies. Pin the npm dependency to an exact version and change it deliberately when upgrading. Version 0.6.0 is shown as the planned first registry release; it cannot be installed this way until that release exists. The `lint` script and ESLint dependency are needed only for the `eslint .` test command in this example.
 
 ```json
 {
@@ -22,7 +22,7 @@ Include these entries in the caller's `package.json`, alongside its other script
     "eslint": "^9.39.5"
   },
   "dependencies": {
-    "reusable-scripts": "git+ssh://git@github.com/jakobmattsson/reusable-scripts.git#79bf62c93d2c6e86094ff46c7a4888fda9e9ec93"
+    "reusable-scripts": "0.6.0"
   }
 }
 ```
@@ -96,3 +96,33 @@ The commands resolve the package from the current Git worktree. Install dependen
 From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, and `npm run cleanup:branches` to preview merged branch cleanup. Run `npm exec --no -- reusable-scripts --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- reusable-scripts checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
 
 Run `npm test` in this repository to verify the shared package itself.
+
+## Prepare the first npm release
+
+The package name `reusable-scripts` was absent from the public npm registry on
+2026-09-22. Check it again immediately before publishing because names can be
+claimed at any time. The package remains in this private Git repository; npm
+publishes only the files selected by the `files` field in `package.json`, plus
+the README and package metadata. A public npm package is downloadable by
+anyone even when its Git repository is private.
+
+Before publishing:
+
+1. Decide whether to add a license. Public downloads do not themselves grant
+   others permission to modify or redistribute the code.
+2. Review `npm pack --dry-run --json` for sensitive or unnecessary files. The
+   expected tarball contains the CLI, the `scripts/` directory, `README.md`,
+   and `package.json`; tests are excluded.
+3. Run `npm test` and test the packed CLI from a separate temporary project.
+4. Sign in to the npm account that should own the unscoped package and enable
+   two-factor authentication. Publish the first version manually only after
+   reviewing the package and the consumer migration. The publishing command is
+   `npm publish` from this repository; it is intentionally not automated.
+5. After the version is available on npm, change callers from the Git URL to
+   the exact registry version, update their lockfiles, and verify `npm ci` and
+   their test suites in CI.
+
+Trusted publishing from GitHub Actions can be added after the first release.
+It requires a configured trusted publisher on npm and a workflow with OIDC
+permission. npm does not currently generate provenance for a public package
+published from a private Git repository.
