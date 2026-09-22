@@ -6,7 +6,7 @@ const path = require('node:path');
 const { repositoryRoot } = require('./project-config');
 
 const ROOT = repositoryRoot;
-const RECEIPT_DIRECTORY = 'reusable-scripts-test-receipts';
+const RECEIPT_DIRECTORY = 'worktree-keeper-test-receipts';
 
 function git(root, args) {
   return execFileSync('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 });

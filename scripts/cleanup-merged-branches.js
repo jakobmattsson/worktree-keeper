@@ -7,9 +7,9 @@
  *
  * Recommended usage:
  *
- *   npm exec --no -- reusable-scripts cleanup-merged-branches             # Dry-run (default).
- *   npm exec --no -- reusable-scripts cleanup-merged-branches --dry-run   # Explicit dry-run.
- *   npm exec --no -- reusable-scripts cleanup-merged-branches --execute   # Apply the displayed cleanup.
+ *   npm exec --no -- worktree-keeper cleanup-merged-branches             # Dry-run (default).
+ *   npm exec --no -- worktree-keeper cleanup-merged-branches --dry-run   # Explicit dry-run.
+ *   npm exec --no -- worktree-keeper cleanup-merged-branches --execute   # Apply the displayed cleanup.
  *
  * Every run fetches the configured remote, including dry-runs, so the cleanup
  * plan uses current remote references. Dry-run does not remove anything,
@@ -288,7 +288,7 @@ function applyPlan(repositoryRoot, plan, execute, log = console.log) {
   if (!execute) {
     log('');
     log('To apply this cleanup, run:');
-    log('  npm exec --no -- reusable-scripts cleanup-merged-branches --execute');
+    log('  npm exec --no -- worktree-keeper cleanup-merged-branches --execute');
   }
 }
 

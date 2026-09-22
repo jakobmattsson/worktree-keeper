@@ -23,7 +23,7 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\n');
   writeProjectConfig(root, { tests: { receiptMaxAgeMinutes: 1 } });
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'original\n');
-  git(root, 'add', '.gitignore', 'tracked.txt', 'reusable-scripts.config.json');
+  git(root, 'add', '.gitignore', 'tracked.txt', 'worktree-keeper.config.json');
   git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Base');
 
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'tested\n');
@@ -32,7 +32,7 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   const receipt = recordReceipt(root);
   assert.equal(receipt.changedFiles.length, 2);
   assert.equal(checkReceipt(root), true);
-  assert.equal(successMessage(root), 'Tests already passed for this change set. In order to rerun tests anyway, use: node node_modules/reusable-scripts/bin/reusable-scripts.js run-tests rerun');
+  assert.equal(successMessage(root), 'Tests already passed for this change set. In order to rerun tests anyway, use: node node_modules/worktree-keeper/bin/worktree-keeper.js run-tests rerun');
   assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 59_000 }, root), true);
   assert.equal(matchesReceipt({ ...receipt, passedAt: Date.now() - 61_000 }, root), false);
 

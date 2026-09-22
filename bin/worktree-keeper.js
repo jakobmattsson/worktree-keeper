@@ -18,7 +18,7 @@ function helpText() {
   const commands = [...COMMANDS]
     .map(([command, description]) => `  ${command.padEnd(width)}  ${description}`)
     .join('\n');
-  return `Usage: reusable-scripts <command> [arguments]\n\nCommands:\n${commands}\n\nOptions:\n  -h, --help  Show this help.\n`;
+  return `Usage: worktree-keeper <command> [arguments]\n\nCommands:\n${commands}\n\nOptions:\n  -h, --help  Show this help.\n`;
 }
 
 function main() {

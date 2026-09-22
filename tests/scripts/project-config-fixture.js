@@ -17,7 +17,7 @@ function writeProjectConfig(root, overrides = {}) {
     },
     loggingDirectory: overrides.loggingDirectory ?? 'tmp/logs',
   };
-  fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify(config));
+  fs.writeFileSync(path.join(root, 'worktree-keeper.config.json'), JSON.stringify(config));
   return config;
 }
 

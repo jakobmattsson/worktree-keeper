@@ -1,17 +1,17 @@
 {
-  "name": "reusable-scripts",
+  "name": "worktree-keeper",
   "version": "0.6.0",
   "description": "Shared repository test, Git worktree, and Codex hook commands",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jakobmattsson/reusable-scripts.git"
+    "url": "git+https://github.com/jakobmattsson/worktree-keeper.git"
   },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "bin": {
-    "reusable-scripts": "bin/reusable-scripts.js"
+    "worktree-keeper": "bin/worktree-keeper.js"
   },
   "files": [
     "bin/",

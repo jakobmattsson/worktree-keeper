@@ -2,7 +2,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CONFIG_FILE = 'reusable-scripts.config.json';
+const CONFIG_FILE = 'worktree-keeper.config.json';
 
 function repositoryRoot(cwd = process.cwd()) {
   return execFileSync('git', ['rev-parse', '--show-toplevel'], {

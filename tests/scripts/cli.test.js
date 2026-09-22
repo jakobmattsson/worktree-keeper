@@ -3,7 +3,7 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const test = require('node:test');
 
-const cli = path.resolve(__dirname, '../../bin/reusable-scripts.js');
+const cli = path.resolve(__dirname, '../../bin/worktree-keeper.js');
 const commands = [
   'run-tests',
   'check-test-receipt',
@@ -23,7 +23,7 @@ test('--help lists every command and its purpose', () => {
 
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
-  assert.match(result.stdout, /Usage: reusable-scripts <command> \[arguments\]/);
+  assert.match(result.stdout, /Usage: worktree-keeper <command> \[arguments\]/);
   for (const command of commands) {
     assert.match(result.stdout, new RegExp(`^  ${command} +\\S`, 'm'));
   }
@@ -35,7 +35,7 @@ test('invalid or missing commands show help and exit with a usage error', () => 
     const result = run(...args);
     assert.equal(result.status, 2);
     assert.equal(result.stdout, '');
-    assert.match(result.stderr, /Usage: reusable-scripts <command> \[arguments\]/);
+    assert.match(result.stderr, /Usage: worktree-keeper <command> \[arguments\]/);
     for (const command of commands) {
       assert.match(result.stderr, new RegExp(`^  ${command} +\\S`, 'm'));
     }

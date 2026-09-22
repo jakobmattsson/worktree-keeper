@@ -32,7 +32,7 @@ test('project config uses defaults when no file exists and accepts a complete fi
 test('project config rejects missing, unknown, and invalid fields', (t) => {
   const root = createRepository(t);
   const valid = writeProjectConfig(root);
-  const file = path.join(root, 'reusable-scripts.config.json');
+  const file = path.join(root, 'worktree-keeper.config.json');
   function rejects(config, message) {
     fs.writeFileSync(file, JSON.stringify(config));
     assert.throws(() => projectConfig(root), message);
