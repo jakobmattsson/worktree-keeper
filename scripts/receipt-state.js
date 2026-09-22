@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { projectConfig, repositoryRoot } = require('./project-config');
+const { repositoryRoot } = require('./project-config');
 
 const ROOT = repositoryRoot;
 const RECEIPT_DIRECTORY = 'reusable-scripts-test-receipts';
@@ -17,13 +17,11 @@ function pathsFromOutput(output) {
 }
 
 function changedPaths(root, baseCommit) {
-  const { excludedPaths } = projectConfig(root).tests;
   const tracked = pathsFromOutput(git(root, [
     'diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', baseCommit, '--',
   ]));
   const untracked = pathsFromOutput(git(root, ['ls-files', '--others', '--exclude-standard', '-z']));
-  return [...new Set([...tracked, ...untracked])]
-    .filter((relative) => !excludedPaths.some((prefix) => relative.startsWith(prefix))).sort();
+  return [...new Set([...tracked, ...untracked])].sort();
 }
 
 function fileFingerprint(root, relative) {

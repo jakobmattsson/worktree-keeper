@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { writeProjectConfig } = require('./project-config-fixture');
 
 const {
   isPrimaryWorktree,
@@ -48,9 +49,7 @@ test('source repository root is the primary worktree', (t) => {
 
 test('invocation log is stored in the source repository with every argument', (t) => {
   const fixture = createWorktree(t);
-  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
-    loggingDirectory: 'custom/logs',
-  }));
+  writeProjectConfig(fixture.repository, { loggingDirectory: 'custom/logs' });
   const argv = [
     '/usr/local/bin/node',
     '/path with spaces/checkpoint-codex-stop.js',

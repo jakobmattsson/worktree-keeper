@@ -4,7 +4,7 @@ Node.js scripts for Codex Git worktree hooks, merged branch cleanup, and cached 
 
 Install this repository from a Git remote. From the caller's Git worktree, run `npm exec --no -- reusable-scripts <command>` in a shell, or use `reusable-scripts <command>` inside an npm script. Run `npm exec --no -- reusable-scripts --help` for the command list. The hook entry points use the `cwd` from the hook event.
 
-Each project can place `reusable-scripts.config.json` at its Git root. All fields are optional:
+Each project can place `reusable-scripts.config.json` at its Git root. When present, it must contain exactly these fields; unknown or missing fields are errors. Without a config file, the package uses the values shown here:
 
 ```json
 {
@@ -15,7 +15,6 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
   },
   "tests": {
     "commands": ["npm run lint", "node --test"],
-    "excludedPaths": ["data/source/"],
     "receiptMaxAgeMinutes": 60,
     "npmTestUsesRunner": false
   },
@@ -23,7 +22,7 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
 }
 ```
 
-`tests.commands` are shell command strings run in order from the caller's Git root. Quote paths or arguments as you would in a terminal. Test receipts are stored under `reusable-scripts-test-receipts` in Node.js's `os.tmpdir()`. Each project has a receipt file named after a hash of its Git root; the directory is created when the test runner successfully records a receipt. Receipt validation fingerprints changed files, the configured exclusions, and the process environment. The Git settings govern checkpointing and branch cleanup. The hook and cleanup messages show the package's own CLI command.
+`tests.commands` are shell command strings run in order from the caller's Git root. Quote paths or arguments as you would in a terminal. Test receipts are stored under `reusable-scripts-test-receipts` in Node.js's `os.tmpdir()`. Each project has a receipt file named after a hash of its Git root; the directory is created when the test runner successfully records a receipt. Receipt validation fingerprints changed files and the process environment. The Git settings govern checkpointing and branch cleanup. The hook and cleanup messages show the package's own CLI command.
 
 Set `tests.npmTestUsesRunner` to `true` when the caller's `npm test` script runs `reusable-scripts run-tests`. The receipt message then suggests `npm test -- rerun`; otherwise it suggests `node node_modules/reusable-scripts/bin/reusable-scripts.js run-tests rerun`.
 

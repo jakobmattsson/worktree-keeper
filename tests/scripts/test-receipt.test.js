@@ -7,6 +7,7 @@ const test = require('node:test');
 const { checkReceipt, matchesReceipt, successMessage } = require('../../scripts/check-test-receipt');
 const { recordReceipt } = require('../../scripts/record-test-receipt');
 const { receiptPath } = require('../../scripts/receipt-state');
+const { writeProjectConfig } = require('./project-config-fixture');
 
 function git(root, ...args) {
   execFileSync('git', args, { cwd: root });
@@ -20,9 +21,7 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   });
   git(root, 'init', '-q');
   fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\n');
-  fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify({
-    tests: { excludedPaths: ['data/layer-1-originals/'], receiptMaxAgeMinutes: 1 },
-  }));
+  writeProjectConfig(root, { tests: { receiptMaxAgeMinutes: 1 } });
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'original\n');
   git(root, 'add', '.gitignore', 'tracked.txt', 'reusable-scripts.config.json');
   git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Base');
@@ -49,6 +48,8 @@ test('Git test receipt tracks dirty files across commits and later edits', (t) =
   fs.writeFileSync(path.join(root, 'node_modules', 'dependency.js'), 'ignored\n');
   fs.mkdirSync(path.join(root, 'data/layer-1-originals'), { recursive: true });
   fs.writeFileSync(path.join(root, 'data/layer-1-originals', 'source.txt'), 'excluded\n');
+  assert.equal(checkReceipt(root), false);
+  fs.rmSync(path.join(root, 'data/layer-1-originals', 'source.txt'));
   assert.equal(checkReceipt(root), true);
   fs.writeFileSync(path.join(root, 'other.txt'), 'not tested\n');
   assert.equal(checkReceipt(root), false);
@@ -91,12 +92,10 @@ test('npm test reuses a receipt and reruns after changes, on request, or in CI',
     private: true,
     scripts: { lint: 'node -e ""', test: 'node scripts/run-tests.js' },
   }));
-  fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify({
-    tests: {
-      commands: ['node --test "tests/example test.js"'],
-      npmTestUsesRunner: true,
-    },
-  }));
+  writeProjectConfig(root, { tests: {
+    commands: ['node --test "tests/example test.js"'],
+    npmTestUsesRunner: true,
+  } });
   const testPath = path.join(root, 'tests', 'example test.js');
   fs.writeFileSync(testPath, `const test = require('node:test');\nconst fs = require('node:fs');\ntest('example', () => fs.appendFileSync(${JSON.stringify(counterPath)}, 'x'));\n`);
   git(root, 'init', '-q');

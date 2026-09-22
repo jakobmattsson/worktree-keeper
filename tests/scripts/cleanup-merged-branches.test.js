@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { writeProjectConfig } = require('./project-config-fixture');
 
 const script = path.resolve(__dirname, '../../scripts/cleanup-merged-branches.js');
 const { applyPlan, buildPlan } = require(script);
@@ -165,9 +166,7 @@ test('branch cleanup uses the caller configured remote and default branch', (t) 
   git(fixture.repository, 'branch', '-m', 'main', 'trunk');
   git(fixture.repository, 'push', 'upstream', 'trunk');
   git(fixture.repository, 'update-ref', '-d', 'refs/remotes/upstream/main');
-  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
-    git: { remote: 'upstream', defaultBranch: 'trunk' },
-  }));
+  writeProjectConfig(fixture.repository, { git: { remote: 'upstream', defaultBranch: 'trunk' } });
 
   const output = runScript(fixture.repository);
 

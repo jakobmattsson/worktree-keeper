@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { writeProjectConfig } = require('./project-config-fixture');
 
 const {
   checkpoint,
@@ -140,9 +141,7 @@ test('checkpoint refuses the primary worktree without recording a hook failure',
 
 test('checkpoint protects the caller configured default branch', (t) => {
   const fixture = createRepository(t);
-  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
-    git: { defaultBranch: 'codex/test-checkpoint' },
-  }));
+  writeProjectConfig(fixture.repository, { git: { defaultBranch: 'codex/test-checkpoint' } });
 
   assert.throws(
     () => checkpoint(fixture.repository, {
@@ -156,9 +155,7 @@ test('checkpoint protects the caller configured default branch', (t) => {
 test('Stop uses the caller configured branch prefix for a detached worktree', (t) => {
   const fixture = createRepository(t);
   git(fixture.repository, 'switch', '--detach');
-  fs.writeFileSync(path.join(fixture.repository, 'reusable-scripts.config.json'), JSON.stringify({
-    git: { branchPrefix: 'work/' },
-  }));
+  writeProjectConfig(fixture.repository, { git: { branchPrefix: 'work/' } });
 
   const response = buildResponse({
     cwd: fixture.repository,
