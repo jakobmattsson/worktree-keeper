@@ -2,7 +2,7 @@
 
 Node.js scripts for Codex Git worktree hooks, merged branch cleanup, and cached test receipts. The scripts use only Node.js built-ins and Git.
 
-Install this repository from a Git remote. From the caller's Git worktree, run `npm exec --no -- reusable-scripts <command>` in a shell, or use `reusable-scripts <command>` inside an npm script. The hook entry points use the `cwd` from the hook event.
+Install this repository from a Git remote. From the caller's Git worktree, run `npm exec --no -- reusable-scripts <command>` in a shell, or use `reusable-scripts <command>` inside an npm script. Run `npm exec --no -- reusable-scripts --help` for the command list. The hook entry points use the `cwd` from the hook event.
 
 Each project can place `reusable-scripts.config.json` at its Git root. All fields are optional:
 
