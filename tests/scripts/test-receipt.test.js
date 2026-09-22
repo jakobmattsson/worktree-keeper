@@ -90,11 +90,11 @@ test('npm test reuses a receipt and reruns after changes, on request, or in CI',
   }));
   fs.writeFileSync(path.join(root, 'reusable-scripts.config.json'), JSON.stringify({
     tests: {
-      commands: [[process.execPath, '--test', 'tests/example.test.js']],
+      commands: ['node --test "tests/example test.js"'],
       rerunCommand: 'node custom-rerun.js',
     },
   }));
-  const testPath = path.join(root, 'tests', 'example.test.js');
+  const testPath = path.join(root, 'tests', 'example test.js');
   fs.writeFileSync(testPath, `const test = require('node:test');\nconst fs = require('node:fs');\ntest('example', () => fs.appendFileSync(${JSON.stringify(counterPath)}, 'x'));\n`);
   git(root, 'init', '-q');
   git(root, 'add', '.');

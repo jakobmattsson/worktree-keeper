@@ -23,10 +23,7 @@ function projectConfig(cwd = process.cwd()) {
       branchPrefix: local.git?.branchPrefix || 'codex/',
     },
     tests: {
-      commands: local.tests?.commands || [
-        ['npm', 'run', 'lint'],
-        [process.execPath, '--test'],
-      ],
+      commands: local.tests?.commands || ['npm run lint', 'node --test'],
       excludedPaths: local.tests?.excludedPaths || [],
       receiptMaxAgeMs: local.tests?.receiptMaxAgeMs || 60 * 60 * 1000,
       receiptDirectory: local.tests?.receiptDirectory || 'reusable-scripts-test-receipts',
@@ -36,10 +33,9 @@ function projectConfig(cwd = process.cwd()) {
   };
 
   if (!Array.isArray(config.tests.commands) || config.tests.commands.some(
-    (command) => !Array.isArray(command) || command.length === 0
-      || command.some((argument) => typeof argument !== 'string'),
+    (command) => typeof command !== 'string' || command.trim() === '',
   )) {
-    throw new Error(`${file}: tests.commands must be an array of nonempty string arrays`);
+    throw new Error(`${file}: tests.commands must be an array of nonempty command strings`);
   }
   if (!Array.isArray(config.tests.excludedPaths) || config.tests.excludedPaths.some(
     (prefix) => typeof prefix !== 'string',

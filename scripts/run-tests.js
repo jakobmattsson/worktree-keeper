@@ -5,8 +5,8 @@ const { checkReceipt, successMessage } = require('./check-test-receipt');
 const { recordReceipt } = require('./record-test-receipt');
 const { projectConfig } = require('./project-config');
 
-function run(command, args, root) {
-  const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' });
+function run(command, root) {
+  const result = spawnSync(command, { cwd: root, stdio: 'inherit', shell: true });
   if (result.error) throw result.error;
   return result.status ?? 1;
 }
@@ -32,8 +32,8 @@ function main() {
     console.log(successMessage(config.root));
     return;
   }
-  for (const [command, ...args] of config.tests.commands) {
-    const status = run(command, args, config.root);
+  for (const command of config.tests.commands) {
+    const status = run(command, config.root);
     if (status !== 0) {
       process.exitCode = status;
       return;

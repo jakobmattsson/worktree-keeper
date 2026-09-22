@@ -14,7 +14,7 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
     "branchPrefix": "codex/"
   },
   "tests": {
-    "commands": [["npm", "run", "lint"], ["node", "--test"]],
+    "commands": ["npm run lint", "node --test"],
     "excludedPaths": ["data/source/"],
     "receiptMaxAgeMs": 3600000,
     "receiptDirectory": "reusable-scripts-test-receipts",
@@ -24,7 +24,7 @@ Each project can place `reusable-scripts.config.json` at its Git root. All field
 }
 ```
 
-`tests.commands` are argument arrays run in order from the caller's root. Receipt validation fingerprints changed files, the configured exclusions, and the process environment. The Git settings govern checkpointing and branch cleanup. The hook and cleanup messages show the package's own CLI command.
+`tests.commands` are shell command strings run in order from the caller's Git root. Quote paths or arguments as you would in a terminal. `tests.receiptDirectory` is a directory under Node.js's `os.tmpdir()`; each project has a receipt file named after a hash of its Git root. The directory is created when the test runner successfully records a receipt. Receipt validation fingerprints changed files, the configured exclusions, and the process environment. The Git settings govern checkpointing and branch cleanup. The hook and cleanup messages show the package's own CLI command.
 
 The `Stop` hook calls `reusable-scripts checkpoint-codex-stop` and the `SessionEnd` hook calls `reusable-scripts cleanup-ended-session`. The manual checkpoint command is `npm exec --no -- reusable-scripts checkpoint-codex-changes`. To run the cached test suite, call `npm exec --no -- reusable-scripts run-tests`; pass `rerun` to force a run. To inspect or delete merged branches, call `npm exec --no -- reusable-scripts cleanup-merged-branches` with `--dry-run` or `--execute`.
 
