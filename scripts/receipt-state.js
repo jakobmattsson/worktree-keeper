@@ -6,6 +6,7 @@ const path = require('node:path');
 const { projectConfig, repositoryRoot } = require('./project-config');
 
 const ROOT = repositoryRoot;
+const RECEIPT_DIRECTORY = 'reusable-scripts-test-receipts';
 
 function git(root, args) {
   return execFileSync('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 });
@@ -76,7 +77,7 @@ function snapshot(root = ROOT(), baseCommit = git(root, ['rev-parse', 'HEAD']).t
 
 function receiptPath(root = ROOT()) {
   const id = crypto.createHash('sha256').update(fs.realpathSync(root)).digest('hex');
-  return path.join(os.tmpdir(), projectConfig(root).tests.receiptDirectory, `${id}.git.json`);
+  return path.join(os.tmpdir(), RECEIPT_DIRECTORY, `${id}.git.json`);
 }
 
 module.exports = { ROOT, environmentFingerprint, receiptPath, snapshot };

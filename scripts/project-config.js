@@ -26,7 +26,6 @@ function projectConfig(cwd = process.cwd()) {
       commands: local.tests?.commands || ['npm run lint', 'node --test'],
       excludedPaths: local.tests?.excludedPaths || [],
       receiptMaxAgeMs: local.tests?.receiptMaxAgeMs || 60 * 60 * 1000,
-      receiptDirectory: local.tests?.receiptDirectory || 'reusable-scripts-test-receipts',
       rerunCommand: local.tests?.rerunCommand || 'npm test -- rerun',
     },
     loggingDirectory: local.loggingDirectory || 'tmp/logs',
