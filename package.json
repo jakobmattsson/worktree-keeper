@@ -1,6 +1,6 @@
 {
   "name": "reusable-scripts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "bin": {
     "reusable-scripts": "bin/reusable-scripts.js"

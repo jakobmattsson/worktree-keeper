@@ -107,6 +107,7 @@ test('Stop requests a semantic checkpoint once and then allows a clean stop', (t
 
   assert.equal(response.decision, 'block');
   assert.match(response.reason, /single-line subject/);
+  assert.match(response.reason, /npm exec --no -- reusable-scripts checkpoint-codex-changes/);
   assert.match(response.reason, /between one and ten sentences/);
   assert.match(response.reason, /--subject .* --body/);
   checkpoint(fixture.repository, {
