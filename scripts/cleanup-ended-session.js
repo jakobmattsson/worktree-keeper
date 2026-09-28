@@ -98,36 +98,52 @@ function captureTarget(event) {
   };
 }
 
-function fastForwardPrimaryDefaultBranch(repositoryRoot, log) {
+function fastForwardLocalDefaultBranch(repositoryRoot, log) {
   const primaryRoot = sourceRepositoryRoot(repositoryRoot);
   const { remote, defaultBranch } = projectConfig(primaryRoot).git;
-  const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], primaryRoot);
-  if (branch !== defaultBranch) {
+  const localRef = `refs/heads/${defaultBranch}`;
+  const remoteRef = `refs/remotes/${remote}/${defaultBranch}`;
+  const localTip = tryGit(['show-ref', '--hash', '--verify', localRef], primaryRoot);
+  if (!localTip) {
     return false;
   }
 
-  const status = runGit(['status', '--porcelain', '--untracked-files=all'], {
+  const remoteTip = runGit(['rev-parse', remoteRef], {
     cwd: primaryRoot,
   });
-  if (status !== '') {
-    log(`Keep ${defaultBranch}: the primary worktree has changes.`);
-    return false;
-  }
-
-  const remoteTip = runGit(['rev-parse', `refs/remotes/${remote}/${defaultBranch}`], {
-    cwd: primaryRoot,
-  });
-  const localTip = runGit(['rev-parse', 'HEAD'], { cwd: primaryRoot });
   if (localTip === remoteTip) {
     return false;
   }
-  if (tryGit(['merge-base', '--is-ancestor', 'HEAD', remoteTip], primaryRoot) === null) {
+  if (tryGit(['merge-base', '--is-ancestor', localTip, remoteTip], primaryRoot) === null) {
     log(`Keep ${defaultBranch}: it cannot fast-forward to ${remote}/${defaultBranch}.`);
     return false;
   }
 
-  log(`Fast-forwarding ${defaultBranch} in the primary worktree to ${remote}/${defaultBranch}.`);
-  runGit(['merge', '--ff-only', remoteTip], { cwd: primaryRoot });
+  const defaultWorktree = listWorktrees(primaryRoot)
+    .find((worktree) => worktree.branch === localRef);
+  if (defaultWorktree) {
+    const status = runGit(['status', '--porcelain', '--untracked-files=all'], {
+      cwd: defaultWorktree.path,
+    });
+    if (status !== '') {
+      log(`Keep ${defaultBranch}: its worktree has changes.`);
+      return false;
+    }
+
+    log(`Fast-forwarding ${defaultBranch} in its worktree to ${remote}/${defaultBranch}.`);
+    runGit(['merge', '--ff-only', remoteTip], { cwd: defaultWorktree.path });
+    return true;
+  }
+
+  log(`Fast-forwarding ${defaultBranch} reference to ${remote}/${defaultBranch}.`);
+  runGit([
+    'update-ref',
+    '-m',
+    `fast-forward ${defaultBranch} to ${remote}/${defaultBranch}`,
+    localRef,
+    remoteTip,
+    localTip,
+  ], { cwd: primaryRoot });
   return true;
 }
 
@@ -174,7 +190,7 @@ function cleanupTarget(target, log = console.log) {
   runGit(['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${defaultBranch}`], {
     cwd: target.repositoryRoot,
   });
-  fastForwardPrimaryDefaultBranch(target.repositoryRoot, log);
+  fastForwardLocalDefaultBranch(target.repositoryRoot, log);
 
   const item = buildPlan(target.repositoryRoot)
     .find((candidate) => candidate.branch === target.branch);

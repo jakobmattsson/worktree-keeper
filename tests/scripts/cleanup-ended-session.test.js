@@ -61,14 +61,14 @@ function createRepository(t) {
   return { mergedWorktree, newWorktree, remote, repository, target };
 }
 
-function advanceRemoteMain(fixture) {
-  const previousMain = git(fixture.repository, 'rev-parse', 'HEAD');
-  fs.writeFileSync(path.join(fixture.repository, 'later.txt'), 'later\n');
-  git(fixture.repository, 'add', 'later.txt');
-  git(fixture.repository, 'commit', '-m', 'Advance remote main');
-  const remoteMain = git(fixture.repository, 'rev-parse', 'HEAD');
-  git(fixture.repository, 'push', 'origin', 'main');
-  git(fixture.repository, 'reset', '--hard', previousMain);
+function advanceRemoteMain(fixture, worktree = fixture.repository) {
+  const previousMain = git(worktree, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(worktree, 'later.txt'), 'later\n');
+  git(worktree, 'add', 'later.txt');
+  git(worktree, 'commit', '-m', 'Advance remote main');
+  const remoteMain = git(worktree, 'rev-parse', 'HEAD');
+  git(worktree, 'push', 'origin', 'main');
+  git(worktree, 'reset', '--hard', previousMain);
   return { previousMain, remoteMain };
 }
 
@@ -115,7 +115,7 @@ test('targeted cleanup fast-forwards clean main in the primary worktree', (t) =>
 
   assert.equal(removed, true);
   assert.equal(git(fixture.repository, 'rev-parse', 'HEAD'), remoteMain);
-  assert.match(output.join('\n'), /Fast-forwarding main in the primary worktree/);
+  assert.match(output.join('\n'), /Fast-forwarding main in its worktree/);
 });
 
 test('targeted cleanup leaves main behind when the primary worktree has changes', (t) => {
@@ -128,7 +128,7 @@ test('targeted cleanup leaves main behind when the primary worktree has changes'
 
   assert.equal(removed, true);
   assert.equal(git(fixture.repository, 'rev-parse', 'HEAD'), previousMain);
-  assert.match(output.join('\n'), /Keep main: the primary worktree has changes/);
+  assert.match(output.join('\n'), /Keep main: its worktree has changes/);
 });
 
 test('targeted cleanup leaves divergent main behind', (t) => {
@@ -147,16 +147,35 @@ test('targeted cleanup leaves divergent main behind', (t) => {
   assert.match(output.join('\n'), /Keep main: it cannot fast-forward/);
 });
 
-test('targeted cleanup does not move main when another branch is checked out', (t) => {
+test('targeted cleanup fast-forwards the main reference when it is not checked out', (t) => {
   const fixture = createRepository(t);
-  const { previousMain } = advanceRemoteMain(fixture);
+  const { remoteMain } = advanceRemoteMain(fixture);
   git(fixture.repository, 'switch', '-c', 'primary-feature');
+  const output = [];
 
-  const removed = cleanupTarget(fixture.target, () => {});
+  const removed = cleanupTarget(fixture.target, (line) => output.push(line));
 
   assert.equal(removed, true);
-  assert.equal(git(fixture.repository, 'rev-parse', 'main'), previousMain);
+  assert.equal(git(fixture.repository, 'rev-parse', 'main'), remoteMain);
   assert.equal(git(fixture.repository, 'branch', '--show-current'), 'primary-feature');
+  assert.match(output.join('\n'), /Fast-forwarding main reference to origin\/main/);
+});
+
+test('targeted cleanup fast-forwards main in a linked worktree', (t) => {
+  const fixture = createRepository(t);
+  const mainWorktree = path.join(path.dirname(fixture.repository), 'main-worktree');
+  git(fixture.repository, 'switch', '-c', 'primary-feature');
+  git(fixture.repository, 'worktree', 'add', mainWorktree, 'main');
+  const { remoteMain } = advanceRemoteMain(fixture, mainWorktree);
+  const output = [];
+
+  const removed = cleanupTarget(fixture.target, (line) => output.push(line));
+
+  assert.equal(removed, true);
+  assert.equal(git(mainWorktree, 'rev-parse', 'HEAD'), remoteMain);
+  assert.equal(fs.readFileSync(path.join(mainWorktree, 'later.txt'), 'utf8'), 'later\n');
+  assert.equal(git(fixture.repository, 'branch', '--show-current'), 'primary-feature');
+  assert.match(output.join('\n'), /Fast-forwarding main in its worktree to origin\/main/);
 });
 
 test('capture and cleanup work when the primary worktree uses another branch', (t) => {
