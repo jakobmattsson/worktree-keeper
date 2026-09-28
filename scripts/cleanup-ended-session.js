@@ -77,13 +77,9 @@ function captureTarget(event) {
   const objectId = runGit(['rev-parse', `refs/heads/${branch}`], { cwd: event.cwd });
   const worktrees = listWorktrees(event.cwd);
   const sessionWorktree = worktrees.find((item) => samePath(item.path, event.cwd));
-  const defaultWorktree = worktrees.find((item) => item.branch === `refs/heads/${defaultBranch}`);
 
   if (!sessionWorktree || sessionWorktree.branch !== `refs/heads/${branch}`) {
     return null;
-  }
-  if (!defaultWorktree) {
-    throw new Error(`could not find the worktree for ${defaultBranch}`);
   }
 
   const commonGitDirectory = runGit([
@@ -96,7 +92,7 @@ function captureTarget(event) {
     branch,
     commonGitDirectory,
     objectId,
-    repositoryRoot: defaultWorktree.path,
+    repositoryRoot: sourceRepositoryRoot(event.cwd),
     sessionId: event.session_id || null,
     worktreePath: sessionWorktree.path,
   };

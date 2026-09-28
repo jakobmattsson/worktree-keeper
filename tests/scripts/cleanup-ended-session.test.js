@@ -159,6 +159,25 @@ test('targeted cleanup does not move main when another branch is checked out', (
   assert.equal(git(fixture.repository, 'branch', '--show-current'), 'primary-feature');
 });
 
+test('capture and cleanup work when the primary worktree uses another branch', (t) => {
+  const fixture = createRepository(t);
+  git(fixture.repository, 'switch', '-c', 'primary-feature');
+
+  const target = captureTarget({
+    cwd: fixture.mergedWorktree,
+    hook_event_name: 'SessionEnd',
+    session_id: 'test-session',
+  });
+  const removed = cleanupTarget(target, () => {});
+
+  assert.equal(target.repositoryRoot, fs.realpathSync(fixture.repository));
+  assert.equal(removed, true);
+  assert.equal(fs.existsSync(fixture.mergedWorktree), false);
+  assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), false);
+  assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), false);
+  assert.equal(git(fixture.repository, 'branch', '--show-current'), 'primary-feature');
+});
+
 test('capture ignores detached worktrees and the primary worktree', (t) => {
   const fixture = createRepository(t);
   git(fixture.newWorktree, 'switch', '--detach');

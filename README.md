@@ -90,7 +90,7 @@ Place this file in the caller's `.codex` directory:
 }
 ```
 
-The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. The `Stop` hook checks whether a Codex checkpoint is needed, and `SessionEnd` schedules cleanup of a merged session branch. Codex loads project hooks only after the project hook source is trusted; review them with `/hooks`. The three-second `SessionEnd` timeout is the maximum documented for that event. See the [Codex hooks reference](https://learn.chatgpt.com/docs/hooks) for hook loading, trust, and timeout behavior.
+The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. The `Stop` hook checks whether a Codex checkpoint is needed, and `SessionEnd` schedules cleanup of a merged session branch. Cleanup does not require the primary worktree to have the default branch checked out. When it does, a clean default branch is fast-forwarded to its remote counterpart before cleanup; otherwise only that fast-forward is skipped. Codex loads project hooks only after the project hook source is trusted; review them with `/hooks`. The three-second `SessionEnd` timeout is the maximum documented for that event. See the [Codex hooks reference](https://learn.chatgpt.com/docs/hooks) for hook loading, trust, and timeout behavior.
 
 ## Check the setup
 
