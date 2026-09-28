@@ -16,7 +16,8 @@ Include these entries in the caller's `package.json`, alongside its other script
   "scripts": {
     "lint": "eslint .",
     "test": "worktree-keeper run-tests",
-    "cleanup:branches": "worktree-keeper cleanup-merged-branches"
+    "cleanup:branches": "worktree-keeper cleanup-merged-branches",
+    "cleanup:empty-directories": "worktree-keeper remove-empty-directories"
   },
   "devDependencies": {
     "eslint": "^9.39.5"
@@ -27,7 +28,7 @@ Include these entries in the caller's `package.json`, alongside its other script
 }
 ```
 
-Run `npm install` from the project root and commit the resulting `package-lock.json`. npm adds `node_modules/.bin` to the `PATH` of package scripts, so the `test` and `cleanup:branches` scripts can call `worktree-keeper` by name.
+Run `npm install` from the project root and commit the resulting `package-lock.json`. npm adds `node_modules/.bin` to the `PATH` of package scripts, so package scripts can call `worktree-keeper` by name.
 
 ### 2. `worktree-keeper.config.json`
 
@@ -93,7 +94,7 @@ The commands resolve the package from the current Git worktree. Install dependen
 
 ## Check the setup
 
-From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, and `npm run cleanup:branches` to preview merged branch cleanup. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
+From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, `npm run cleanup:branches` to preview merged branch cleanup, and `npm run cleanup:empty-directories` to preview removal of directories containing only ignored files. Add `-- --execute` to either cleanup package script to apply it. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
 
 Run `npm test` in this repository to verify the shared package itself.
 

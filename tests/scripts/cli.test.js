@@ -12,6 +12,7 @@ const commands = [
   'checkpoint-codex-stop',
   'cleanup-ended-session',
   'cleanup-merged-branches',
+  'remove-empty-directories',
 ];
 
 function run(...args) {

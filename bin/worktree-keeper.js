@@ -11,6 +11,7 @@ const COMMANDS = new Map([
   ['checkpoint-codex-stop', 'Handle the Codex Stop hook and request a checkpoint if needed.'],
   ['cleanup-ended-session', 'Queue cleanup for a merged Codex session worktree.'],
   ['cleanup-merged-branches', 'Preview or delete merged worktrees and branches.'],
+  ['remove-empty-directories', 'Preview or remove directories containing only ignored files.'],
 ]);
 
 function helpText() {
