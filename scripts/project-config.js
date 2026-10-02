@@ -11,22 +11,6 @@ function repositoryRoot(cwd = process.cwd()) {
   }).trim();
 }
 
-function defaultConfig() {
-  return {
-    git: {
-      remote: 'origin',
-      defaultBranch: 'main',
-      branchPrefix: 'codex/',
-    },
-    tests: {
-      commands: ['npm run lint', 'node --test'],
-      receiptMaxAgeMinutes: 60,
-      npmTestUsesRunner: false,
-    },
-    loggingDirectory: 'tmp/logs',
-  };
-}
-
 function requireExactKeys(value, keys, location, file) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${file}: ${location} must be an object`);
@@ -70,7 +54,10 @@ function validateConfig(config, file) {
 function projectConfig(cwd = process.cwd()) {
   const root = repositoryRoot(cwd);
   const file = path.join(root, CONFIG_FILE);
-  const config = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : defaultConfig();
+  if (!fs.existsSync(file)) {
+    throw new Error(`${file}: configuration file is required; define tests.commands explicitly`);
+  }
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
   validateConfig(config, file);
   return { root, ...config };
 }

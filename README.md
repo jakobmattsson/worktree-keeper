@@ -8,7 +8,7 @@ This example follows the working `fonden` setup. Add the three files below to th
 
 ### 1. `package.json`
 
-Include these entries in the caller's `package.json`, alongside its other scripts and dependencies. Pin the npm dependency to an exact version and change it deliberately when upgrading. Version 0.6.0 is shown as the planned first registry release; it cannot be installed this way until that release exists. The `lint` script and ESLint dependency are needed only for the `eslint .` test command in this example.
+Include these entries in the caller's `package.json`, alongside its other scripts and dependencies. Pin the npm dependency to an exact version and change it deliberately when upgrading. The `lint` script and ESLint dependency are needed only for the `eslint .` test command in this example.
 
 ```json
 {
@@ -23,7 +23,7 @@ Include these entries in the caller's `package.json`, alongside its other script
     "eslint": "^9.39.5"
   },
   "dependencies": {
-    "worktree-keeper": "0.6.0"
+    "worktree-keeper": "0.7.1"
   }
 }
 ```
@@ -32,7 +32,7 @@ Run `npm install` from the project root and commit the resulting `package-lock.j
 
 ### 2. `worktree-keeper.config.json`
 
-Place this file at the caller's Git root. If the file exists, all fields shown here are required and any extra field is rejected. The package uses built-in defaults only when the file is absent.
+Place this required file at the caller's Git root. All fields shown here are required and any extra field is rejected. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
 
 ```json
 {
@@ -98,11 +98,9 @@ From the caller's Git worktree, run `npm test` for the configured commands, `npm
 
 Run `npm test` in this repository to verify the shared package itself.
 
-## Prepare the first npm release
+## Publish an npm release
 
-The package name `worktree-keeper` was absent from the public npm registry on
-2026-09-22. Check it again immediately before publishing because names can be
-claimed at any time. npm publishes only the files selected by the `files`
+npm publishes only the files selected by the `files`
 field in `package.json`, plus the README and package metadata. A public npm
 package is downloadable by anyone, whether its Git repository is public or
 private.
@@ -114,15 +112,15 @@ Before publishing:
    expected tarball contains the CLI, the `scripts/` directory, `README.md`,
    `LICENSE`, and `package.json`; tests are excluded.
 3. Run `npm test` and test the packed CLI from a separate temporary project.
-4. Sign in to the npm account that should own the unscoped package and enable
-   two-factor authentication. Publish the first version manually only after
-   reviewing the package and the consumer migration. The publishing command is
+4. Sign in to the npm account that owns the unscoped package and enable
+   two-factor authentication. Publish manually only after reviewing the package
+   and the consumer migration. The publishing command is
    `npm publish` from this repository; it is intentionally not automated.
 5. After the version is available on npm, change callers from the Git URL to
    the exact registry version, update their lockfiles, and verify `npm ci` and
    their test suites in CI.
 
-Trusted publishing from GitHub Actions can be added after the first release.
+Trusted publishing from GitHub Actions can be added for future releases.
 It requires a configured trusted publisher on npm and a workflow with OIDC
 permission. A public Git repository allows npm to generate provenance for
 releases published through that workflow.

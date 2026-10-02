@@ -63,7 +63,8 @@ test('Git test receipt detects deletions and staged edits', (t) => {
   });
   git(root, 'init', '-q');
   fs.writeFileSync(path.join(root, 'tracked.txt'), 'original\n');
-  git(root, 'add', 'tracked.txt');
+  writeProjectConfig(root);
+  git(root, 'add', 'tracked.txt', 'worktree-keeper.config.json');
   git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Base');
   recordReceipt(root);
   assert.equal(checkReceipt(root), true);

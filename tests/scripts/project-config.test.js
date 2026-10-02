@@ -14,13 +14,12 @@ function createRepository(t) {
   return root;
 }
 
-test('project config uses defaults when no file exists and accepts a complete file', (t) => {
+test('project config requires a file and accepts a complete file', (t) => {
   const root = createRepository(t);
-  const defaults = projectConfig(root);
-  assert.deepEqual(Object.keys(defaults).sort(), ['git', 'loggingDirectory', 'root', 'tests']);
-  assert.deepEqual(Object.keys(defaults.tests).sort(), [
-    'commands', 'npmTestUsesRunner', 'receiptMaxAgeMinutes',
-  ]);
+  assert.throws(
+    () => projectConfig(root),
+    /configuration file is required; define tests\.commands explicitly/,
+  );
 
   const fileConfig = writeProjectConfig(root, {
     git: { remote: 'upstream' },

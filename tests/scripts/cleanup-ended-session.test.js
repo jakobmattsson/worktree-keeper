@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { writeProjectConfig } = require('./project-config-fixture');
 
 const { captureTarget, cleanupTarget } = require('../../scripts/cleanup-ended-session.js');
 
@@ -36,7 +37,8 @@ function createRepository(t) {
   git(repository, 'config', 'user.name', 'Test User');
   git(repository, 'config', 'user.email', 'test@example.com');
   fs.writeFileSync(path.join(repository, 'file.txt'), 'main\n');
-  git(repository, 'add', 'file.txt');
+  writeProjectConfig(repository);
+  git(repository, 'add', 'file.txt', 'worktree-keeper.config.json');
   git(repository, 'commit', '-m', 'Initial commit');
   git(repository, 'remote', 'add', 'origin', remote);
   git(repository, 'push', '-u', 'origin', 'main');
