@@ -10,6 +10,7 @@ const COMMANDS = new Map([
   ['checkpoint-codex-changes', 'Commit a linked worktree and push an existing remote branch.'],
   ['checkpoint-codex-stop', 'Handle the Codex Stop hook and request a checkpoint if needed.'],
   ['cleanup-ended-session', 'Queue cleanup for a merged Codex session worktree.'],
+  ['queue-merged-worktree-cleanup', 'Queue cleanup for the current merged worktree.'],
   ['cleanup-merged-branches', 'Preview or delete merged worktrees and branches.'],
   ['remove-empty-directories', 'Preview or remove directories containing only ignored files.'],
 ]);
