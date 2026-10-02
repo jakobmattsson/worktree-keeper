@@ -6,7 +6,14 @@ const path = require('node:path');
 const test = require('node:test');
 const { writeProjectConfig } = require('./project-config-fixture');
 
-const { captureTarget, cleanupTarget } = require('../../scripts/cleanup-ended-session.js');
+const {
+  captureTarget,
+  captureWorktreeTarget,
+  cleanupTarget,
+} = require('../../scripts/cleanup-ended-session.js');
+const {
+  queueCurrentWorktree,
+} = require('../../scripts/queue-merged-worktree-cleanup.js');
 
 function git(cwd, ...args) {
   return execFileSync('git', args, {
@@ -212,4 +219,35 @@ test('capture ignores detached worktrees and the primary worktree', (t) => {
     cwd: fixture.repository,
     hook_event_name: 'SessionEnd',
   }), null);
+});
+
+test('explicit queue captures the current linked worktree before launching cleanup', (t) => {
+  const fixture = createRepository(t);
+  let launchedTarget = null;
+
+  const queued = queueCurrentWorktree(fixture.mergedWorktree, (target) => {
+    launchedTarget = target;
+    return { logPath: '/tmp/cleanup.log', pid: 1234 };
+  });
+
+  assert.deepEqual(launchedTarget, captureWorktreeTarget(fixture.mergedWorktree));
+  assert.equal(queued.target.branch, 'merged-feature');
+  assert.equal(queued.target.objectId, git(fixture.mergedWorktree, 'rev-parse', 'HEAD'));
+  assert.equal(queued.pid, 1234);
+  assert.equal(queued.logPath, '/tmp/cleanup.log');
+});
+
+test('explicit queue rejects primary, detached, and default-branch worktrees', (t) => {
+  const fixture = createRepository(t);
+
+  assert.throws(
+    () => queueCurrentWorktree(fixture.repository, () => {}),
+    /linked worktree on a non-default branch/,
+  );
+
+  git(fixture.newWorktree, 'switch', '--detach');
+  assert.throws(
+    () => queueCurrentWorktree(fixture.newWorktree, () => {}),
+    /linked worktree on a non-default branch/,
+  );
 });

@@ -11,6 +11,7 @@ const commands = [
   'checkpoint-codex-changes',
   'checkpoint-codex-stop',
   'cleanup-ended-session',
+  'queue-merged-worktree-cleanup',
   'cleanup-merged-branches',
   'remove-empty-directories',
 ];
@@ -51,4 +52,15 @@ test('valid commands still receive their arguments', () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Usage: cleanup-merged-branches\.js \[--dry-run \| --execute\]/);
   assert.doesNotMatch(result.stdout, /Commands:/);
+});
+
+test('targeted cleanup queue exposes its own help', () => {
+  const result = run('queue-merged-worktree-cleanup', '--help');
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+  assert.equal(
+    result.stdout,
+    'Usage: worktree-keeper queue-merged-worktree-cleanup\n',
+  );
 });

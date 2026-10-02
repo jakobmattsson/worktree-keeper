@@ -60,23 +60,20 @@ function samePath(first, second) {
   }
 }
 
-function captureTarget(event) {
-  if (event?.hook_event_name !== 'SessionEnd' || typeof event.cwd !== 'string') {
+function captureWorktreeTarget(cwd, sessionId = null) {
+  if (typeof cwd !== 'string' || isPrimaryWorktree(cwd)) {
     return null;
   }
-  if (isPrimaryWorktree(event.cwd)) {
-    return null;
-  }
-  const { defaultBranch } = projectConfig(event.cwd).git;
+  const { defaultBranch } = projectConfig(cwd).git;
 
-  const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], event.cwd);
+  const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd);
   if (!branch || branch === defaultBranch) {
     return null;
   }
 
-  const objectId = runGit(['rev-parse', `refs/heads/${branch}`], { cwd: event.cwd });
-  const worktrees = listWorktrees(event.cwd);
-  const sessionWorktree = worktrees.find((item) => samePath(item.path, event.cwd));
+  const objectId = runGit(['rev-parse', `refs/heads/${branch}`], { cwd });
+  const worktrees = listWorktrees(cwd);
+  const sessionWorktree = worktrees.find((item) => samePath(item.path, cwd));
 
   if (!sessionWorktree || sessionWorktree.branch !== `refs/heads/${branch}`) {
     return null;
@@ -86,16 +83,23 @@ function captureTarget(event) {
     'rev-parse',
     '--path-format=absolute',
     '--git-common-dir',
-  ], { cwd: event.cwd });
+  ], { cwd });
 
   return {
     branch,
     commonGitDirectory,
     objectId,
-    repositoryRoot: sourceRepositoryRoot(event.cwd),
-    sessionId: event.session_id || null,
+    repositoryRoot: sourceRepositoryRoot(cwd),
+    sessionId,
     worktreePath: sessionWorktree.path,
   };
+}
+
+function captureTarget(event) {
+  if (event?.hook_event_name !== 'SessionEnd' || typeof event.cwd !== 'string') {
+    return null;
+  }
+  return captureWorktreeTarget(event.cwd, event.session_id || null);
 }
 
 function fastForwardLocalDefaultBranch(repositoryRoot, log) {
@@ -274,6 +278,7 @@ function launchWorker(target) {
 
   child.unref();
   fs.closeSync(logFile);
+  return { logPath, pid: child.pid };
 }
 
 function readHookEvent() {
@@ -304,4 +309,9 @@ if (require.main === module) {
   }
 }
 
-module.exports = { captureTarget, cleanupTarget };
+module.exports = {
+  captureTarget,
+  captureWorktreeTarget,
+  cleanupTarget,
+  launchWorker,
+};
