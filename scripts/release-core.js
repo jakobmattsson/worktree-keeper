@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const yaml = require('yaml');
 const requiredCondition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
@@ -328,25 +329,31 @@ async function waitForWorkflow(exec, cwd, details, sha, now, sleep, log) {
 async function waitForRegistry(exec, cwd, details, workflow, now, sleep, log) {
     const deadline = now() + registryTimeoutMs;
     log(`Workflow run for ${details.tag} completed in ${(workflow.durationMs / 1000).toFixed(1)} seconds; waiting for ${details.name}@${details.version} on npm.`);
-    while (now() < deadline) {
-        const result = exec('npm', [
-            'view', `${details.name}@${details.version}`, 'version', '--json',
-            '--registry', 'https://registry.npmjs.org/',
-        ], { cwd });
-        if (result.status === 0) {
-            let observed;
-            try {
-                observed = JSON.parse(result.stdout);
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'worktree-keeper-registry-'));
+    try {
+        while (now() < deadline) {
+            const result = exec('npm', [
+                'view', `${details.name}@${details.version}`, 'version', '--json',
+                '--registry', 'https://registry.npmjs.org/', '--prefer-online', '--cache', cache,
+            ], { cwd });
+            if (result.status === 0) {
+                let observed;
+                try {
+                    observed = JSON.parse(result.stdout);
+                }
+                catch {
+                    observed = null;
+                }
+                if (observed === details.version)
+                    return Math.max(0, now() - workflow.completedAt);
             }
-            catch {
-                observed = null;
-            }
-            if (observed === details.version)
-                return Math.max(0, now() - workflow.completedAt);
+            await sleep(pollIntervalMs);
         }
-        await sleep(pollIntervalMs);
+        throw new ReleaseError(`Timed out waiting for ${details.name}@${details.version} on npm.`);
     }
-    throw new ReleaseError(`Timed out waiting for ${details.name}@${details.version} on npm.`);
+    finally {
+        fs.rmSync(cache, { recursive: true, force: true });
+    }
 }
 async function release(bump, dependencies) {
     const { cwd, spawnSync, environment, now, sleep, log } = dependencies;
