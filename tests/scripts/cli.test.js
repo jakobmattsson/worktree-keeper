@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const cli = path.resolve(__dirname, '../../bin/worktree-keeper.js');
 const commands = [
+  'release',
   'run-tests',
   'check-test-receipt',
   'record-test-receipt',

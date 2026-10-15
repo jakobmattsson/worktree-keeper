@@ -19,9 +19,13 @@
     "scripts/"
   ],
   "scripts": {
-    "test": "node --test tests/scripts/*.test.js"
+    "test": "node --test tests/scripts/*.test.js",
+    "release": "node bin/worktree-keeper.js release"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   }
 }
