@@ -100,27 +100,25 @@ Run `npm test` in this repository to verify the shared package itself.
 
 ## Publish an npm release
 
-npm publishes only the files selected by the `files`
-field in `package.json`, plus the README and package metadata. A public npm
-package is downloadable by anyone, whether its Git repository is public or
-private.
+Install dependencies with `npm ci`. Review `npm pack --dry-run --json` before
+publishing; npm includes only `bin/`, `scripts/`, the README, and package metadata.
 
-Before publishing:
+Configure npm trusted publishing for this repository and the `package.yml`
+GitHub Actions workflow, with direct publishing enabled. The workflow runs tests
+and a package dry run, verifies that the tag matches both package versions, and
+publishes via OIDC. It needs no npm access token.
 
-1. Confirm that the MIT license and copyright holder in `LICENSE` are correct.
-2. Review `npm pack --dry-run --json` for sensitive or unnecessary files. The
-   expected tarball contains the CLI, the `scripts/` directory, `README.md`,
-   `LICENSE`, and `package.json`; tests are excluded.
-3. Run `npm test` and test the packed CLI from a separate temporary project.
-4. Sign in to the npm account that owns the unscoped package and enable
-   two-factor authentication. Publish manually only after reviewing the package
-   and the consumer migration. The publishing command is
-   `npm publish` from this repository; it is intentionally not automated.
-5. After the version is available on npm, change callers from the Git URL to
-   the exact registry version, update their lockfiles, and verify `npm ci` and
-   their test suites in CI.
+From a clean repository root, run `npm run release -- patch`, `minor`, or `major`.
+The command checks the GitHub publish workflow, switches to the synchronized
+default branch, increments the version in `package.json` and `package-lock.json`,
+commits and pushes it, then pushes the matching `v<version>` tag. It waits for
+the publish job and for the version to appear on npm. Git and an authenticated
+GitHub CLI (`gh`) with repository and Actions access are required. Inspect local
+and remote state before retrying an interrupted release.
 
-Trusted publishing from GitHub Actions can be added for future releases.
-It requires a configured trusted publisher on npm and a workflow with OIDC
-permission. A public Git repository allows npm to generate provenance for
-releases published through that workflow.
+Other npm projects can use this command through a package script such as
+`"release": "worktree-keeper release"`. The project must use a root package
+with a stable version and the supported tag-triggered GitHub Actions publish
+job. Use `.github/workflows/package.yml` as the template: the `publish` job
+must use its exact tag condition and contain a step whose command is exactly
+`npm publish`. Workspaces are not supported.

@@ -4,6 +4,8 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 const COMMANDS = new Map([
+  ['verify-release-version', 'Check a release tag against package and lockfile versions.'],
+  ['release', 'Publish a version through a GitHub Actions npm workflow.'],
   ['run-tests', 'Run configured tests, reusing a valid test receipt.'],
   ['check-test-receipt', 'Check whether a valid test receipt exists.'],
   ['record-test-receipt', 'Record a test receipt without running tests.'],
