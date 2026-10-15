@@ -322,7 +322,19 @@ test('registry wait measures from the workflow completion without real time dela
     const completed = Date.parse('2026-10-11T12:00:00Z');
     let now = completed + 3_000;
     let checks = 0;
-    const exec = () => {
+    let cache;
+    const exec = (command, args) => {
+        assert.equal(command, 'npm');
+        assert.deepEqual(args.slice(0, 5), [
+            'view', '@example/package@1.3.6', 'version', '--json',
+            '--registry',
+        ]);
+        assert.equal(args[5], 'https://registry.npmjs.org/');
+        assert.equal(args[6], '--prefer-online');
+        assert.equal(args[7], '--cache');
+        cache ??= args[8];
+        assert.equal(args[8], cache);
+        assert.equal(fs.existsSync(cache), true);
         checks += 1;
         return checks === 1 ? { status: 1, stdout: '', stderr: 'not found' }
             : { status: 0, stdout: '"1.3.6"', stderr: '' };
@@ -333,6 +345,7 @@ test('registry wait measures from the workflow completion without real time dela
     }, { completedAt: completed, durationMs: 90_000 }, () => now, async (ms) => { now += ms; }, (message) => messages.push(message));
     assert.equal(elapsed, 8_000);
     assert.equal(checks, 2);
+    assert.equal(fs.existsSync(cache), false);
     assert.deepEqual(messages, [
         'Workflow run for v1.3.6 completed in 90.0 seconds; waiting for @example/package@1.3.6 on npm.',
     ]);

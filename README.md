@@ -115,6 +115,10 @@ commits and pushes it, then pushes the matching `v<version>` tag. It waits for
 the publish job and for the version to appear on npm. Git and an authenticated
 GitHub CLI (`gh`) with repository and Actions access are required. Inspect local
 and remote state before retrying an interrupted release.
+Registry checks use a temporary npm cache and request current metadata, so a
+recently published version is not hidden by an earlier cached response.
+If authentication or another preflight check fails, resolve that problem before
+retrying the release command; do not create the version commit or tag manually.
 
 Other npm projects can use this command through a package script such as
 `"release": "worktree-keeper release"`. The project must use a root package
