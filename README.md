@@ -203,9 +203,16 @@ does not grant trust automatically.
 
 ## Publish an npm release
 
-Run `nvm install` and `nvm use` at the repository root to select the Node.js
-version in `.nvmrc`, then install dependencies with `npm ci`. All GitHub Actions
-jobs use the same `.nvmrc` version. Review `npm pack --dry-run --json` before
+Install [Volta](https://volta.sh/) and ensure its shims are first in `PATH`
+(`volta setup` configures supported shell profiles; restart your shell afterward).
+Then run `npm ci` at the repository root. Volta automatically selects the exact
+Node.js and npm versions in `package.json` for ordinary `node`, `npm`, and `npx`
+commands, including in non-interactive agent shells with Volta on `PATH`.
+GitHub Actions uses `volta-cli/action` to select the same project versions.
+Check `volta which node`, `node --version`, and `npm --version` to verify your
+setup. Use `volta pin node@<version> npm@<version>` to update the project versions;
+`engines.node` separately describes supported consumer versions.
+Review `npm pack --dry-run --json` before
 publishing; npm includes only `bin/`, `scripts/`, the README, and package metadata.
 
 Configure npm trusted publishing for this repository and the `package.yml`
