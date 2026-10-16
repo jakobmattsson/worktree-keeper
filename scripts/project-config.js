@@ -30,7 +30,17 @@ function requireNonemptyString(value, location, file) {
 }
 
 function validateConfig(config, file) {
-  requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
+  requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file, ['projectChecks']);
+  if (Object.hasOwn(config, 'projectChecks')) {
+    requireExactKeys(config.projectChecks, ['testWorkflow', 'requiredJobs'], 'projectChecks', file);
+    if (typeof config.projectChecks.testWorkflow !== 'string' || !/^[A-Za-z0-9_-]+\.ya?ml$/u.test(config.projectChecks.testWorkflow)) {
+      throw new Error(`${file}: projectChecks.testWorkflow must be a workflow filename`);
+    }
+    const jobs = config.projectChecks.requiredJobs;
+    if (!Array.isArray(jobs) || !jobs.length || jobs.some(job => typeof job !== 'string' || !job.trim() || job !== job.trim()) || new Set(jobs).size !== jobs.length) {
+      throw new Error(`${file}: projectChecks.requiredJobs must contain unique nonempty job names`);
+    }
+  }
   requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod', 'releaseRequiredChecks', 'releaseTestWorkflow']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 

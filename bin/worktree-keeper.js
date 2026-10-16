@@ -4,6 +4,7 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 const COMMANDS = new Map([
+  ['check-project', 'Validate local toolchain, hooks, CI and publication conventions.'],
   ['install-hooks', 'Install or update project Codex hooks while preserving other hooks.'],
   ['verify-release', 'Verify release versions, required CI and strict branch protection.'],
   ['verify-release-protection', 'Require strict mandatory release checks without bypass.'],

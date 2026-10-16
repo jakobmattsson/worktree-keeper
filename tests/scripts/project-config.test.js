@@ -91,3 +91,17 @@ test('project config accepts a separate release test workflow filename', (t) => 
     assert.throws(() => projectConfig(root), /releaseTestWorkflow must be a workflow filename/);
   }
 });
+
+test('project config validates optional local project checks', t => {
+  const root = createRepository(t);
+  const config = writeProjectConfig(root);
+  const file = path.join(root, 'worktree-keeper.config.json');
+  const projectChecks = { testWorkflow: 'ci.yml', requiredJobs: ['Tests', 'Test package'] };
+  fs.writeFileSync(file, JSON.stringify({ ...config, projectChecks }));
+  assert.deepEqual(projectConfig(root).projectChecks, projectChecks);
+  for (const invalid of [null, {}, { ...projectChecks, extra: true }, { ...projectChecks, testWorkflow: '../test.yml' },
+    { ...projectChecks, requiredJobs: [] }, { ...projectChecks, requiredJobs: ['Tests', 'Tests'] }]) {
+    fs.writeFileSync(file, JSON.stringify({ ...config, projectChecks: invalid }));
+    assert.throws(() => projectConfig(root), /projectChecks/);
+  }
+});
