@@ -203,16 +203,18 @@ does not grant trust automatically.
 
 ## Publish an npm release
 
-Install dependencies with `npm ci`. Review `npm pack --dry-run --json` before
+Run `nvm install` and `nvm use` at the repository root to select the Node.js
+version in `.nvmrc`, then install dependencies with `npm ci`. All GitHub Actions
+jobs use the same `.nvmrc` version. Review `npm pack --dry-run --json` before
 publishing; npm includes only `bin/`, `scripts/`, the README, and package metadata.
 
 Configure npm trusted publishing for this repository and the `package.yml`
 GitHub Actions workflow, with direct publishing enabled. The workflow verifies
 the release and publishes via OIDC. It needs no npm access token.
 
-`test.yml` runs on pull requests, with `test` on Node.js 20 and `Test package`
-on Node.js 22. `package.yml` runs on `v*` tags and only verifies and publishes.
-Merging to `main` does not start another run.
+`test.yml` runs `test` and `Test package` on pull requests. `package.yml` runs
+on `v*` tags and only verifies and publishes. Merging to `main` does not start
+another run.
 
 Release verification uses GitHub's enforced branch policy instead of retaining
 artifacts of tested contents. Configure `git.releaseRequiredChecks` in the root
