@@ -10,6 +10,7 @@ const COMMANDS = new Map([
   ['check-test-receipt', 'Check whether a valid test receipt exists.'],
   ['record-test-receipt', 'Record a test receipt without running tests.'],
   ['checkpoint-codex-changes', 'Commit a linked worktree and push according to project configuration.'],
+  ['checkpoint-codex-session-start', 'Load checkpoint instructions for a linked Codex worktree.'],
   ['checkpoint-codex-stop', 'Handle the Codex Stop hook and request a checkpoint if needed.'],
   ['cleanup-ended-session', 'Queue cleanup for a merged Codex session worktree.'],
   ['queue-merged-worktree-cleanup', 'Queue cleanup for the current merged worktree.'],

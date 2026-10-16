@@ -82,6 +82,18 @@ Place this file in the caller's `.codex` directory:
 {
   "description": "Repository lifecycle hooks.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/node_modules/worktree-keeper/bin/worktree-keeper.js\" checkpoint-codex-session-start",
+            "timeout": 30,
+            "statusMessage": "Loading Codex checkpoint instructions"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -110,9 +122,23 @@ Place this file in the caller's `.codex` directory:
 }
 ```
 
-The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. Both hooks act on linked worktrees and leave the primary worktree alone. When uncommitted changes remain, the `Stop` hook asks the agent to review the diff and run `checkpoint-codex-changes` with a descriptive English commit message. That command stages all changes and commits them on a task branch; it refuses the configured default branch. With `git.checkpointPushRemotes`, it pushes without force to each listed remote, including new branches. Without that setting, it pushes only if the branch already exists on `git.remote`, otherwise the branch stays local.
+The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. The checkpoint hooks apply only to linked worktrees. `SessionStart` supplies the checkpoint instructions before work begins, including on resume, fork, and after compaction; no matcher is needed. `Stop` uses the same package-owned instructions as a fallback. You do not need to copy checkpoint rules into each project's `AGENTS.md`. Explicit user instructions not to commit or push take precedence: the agent must skip the checkpoint command when they conflict, even if `Stop` requests it. The hook checks Git state and cannot determine user intent itself. When uncommitted changes remain, the `Stop` hook asks the agent to review the diff and run `checkpoint-codex-changes` with a descriptive English commit message. That command stages all changes and commits them on a task branch; it refuses the configured default branch. With `git.checkpointPushRemotes`, it pushes without force to each listed remote, including new branches. Without that setting, it pushes only if the branch already exists on `git.remote`, otherwise the branch stays local.
 
 `SessionEnd` starts a detached worker to clean up the session worktree and branch only if the captured branch tip is still unchanged and fully merged into the remote default branch. Dirty or locked worktrees are kept. Worker output is appended to `cleanup-ended-session.log` in the shared Git directory. Cleanup does not require the primary worktree to have the default branch checked out. A local default branch that can fast-forward is updated before cleanup: a branch not checked out in any worktree is moved atomically, while a checked-out branch is merged in its clean worktree so its files and index stay synchronized. A dirty or diverged default branch is left unchanged. Codex loads project hooks only after the project hook source is trusted; review them with `/hooks`. The three-second `SessionEnd` timeout is the maximum documented for that event. See the [Codex hooks reference](https://learn.chatgpt.com/docs/hooks) for hook loading, trust, and timeout behavior.
+
+### Adopting shared checkpoint instructions
+
+For a project that already uses the Stop hook, upgrade to a package release that
+includes `checkpoint-codex-session-start` and add the `SessionStart` entry above.
+Keep `Stop` and `SessionEnd`. Review and trust the updated hooks with `/hooks`,
+then start a new session or resume one to load the instructions. The new command
+is not available in older releases, including the pinned `0.8.0` example above;
+update that pin when adopting this feature after publication.
+
+Remove the duplicated checkpoint section from the project's `AGENTS.md` once the
+new hook is enabled. Keep any project-specific rules there. Installing the npm
+dependency alone does not activate hooks: each caller must configure and trust
+them. The shared policy then follows the installed package version.
 
 ## Check the setup
 

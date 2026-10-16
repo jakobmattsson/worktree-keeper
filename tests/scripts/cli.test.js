@@ -10,6 +10,7 @@ const commands = [
   'check-test-receipt',
   'record-test-receipt',
   'checkpoint-codex-changes',
+  'checkpoint-codex-session-start',
   'checkpoint-codex-stop',
   'cleanup-ended-session',
   'queue-merged-worktree-cleanup',

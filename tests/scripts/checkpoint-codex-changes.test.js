@@ -289,3 +289,29 @@ test('explicit remotes replace the legacy remote push target', (t) => {
   assert.equal(git(fixture.repository, 'rev-parse', '--abbrev-ref', '@{upstream}'),
     'origin/codex/test-checkpoint');
 });
+
+
+test('SessionStart loads shared instructions for every session source', (t) => {
+  const fixture = createRepository(t);
+  const { buildResponse: start } = require('../../scripts/checkpoint-codex-session-start');
+  writeProjectConfig(fixture.repository, {
+    git: { defaultBranch: 'trunk', branchPrefix: 'task/' },
+  });
+  for (const source of ['startup', 'resume', 'clear', 'compact', 'fork']) {
+    const response = start({ hook_event_name: 'SessionStart', cwd: fixture.repository, source });
+    assert.equal(response.hookSpecificOutput.hookEventName, 'SessionStart');
+    const instructions = response.hookSpecificOutput.additionalContext;
+    assert.match(instructions, /default branch \(trunk\)/);
+    assert.match(instructions, /named with the task\/ prefix/);
+    assert.match(instructions, /explicit user instruction not to commit or push/);
+    assert.match(instructions, /do not run the checkpoint command/);
+    assert.match(instructions, /even if a Stop hook asks for it/);
+    assert.equal(buildResponse({ hook_event_name: 'Stop', cwd: fixture.repository }).reason,
+      instructions);
+  }
+  assert.deepEqual(start({ hook_event_name: 'SessionStart', cwd: fixture.primaryRepository }), {});
+  for (const event of [null, {}, { hook_event_name: 'Stop', cwd: fixture.repository },
+    { hook_event_name: 'SessionStart' }]) {
+    assert.deepEqual(start(event), {});
+  }
+});

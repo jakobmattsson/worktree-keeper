@@ -42,6 +42,11 @@ test('repository hooks and checkpoint resolve local source without a self depend
       timeout: definition.timeout * 1000,
     });
   }
+  const start = JSON.parse(hook('SessionStart'));
+  assert.equal(start.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.match(start.hookSpecificOutput.additionalContext, /Before the final response/);
+  assert.match(start.hookSpecificOutput.additionalContext, /explicit user instruction not to commit or push/);
+  assert.deepEqual(JSON.parse(hook('SessionStart', primary)), {});
   assert.deepEqual(JSON.parse(hook('Stop')), {});
   fs.writeFileSync(path.join(linked, 'change.txt'), 'A checkpoint\n');
   const response = JSON.parse(hook('Stop'));
