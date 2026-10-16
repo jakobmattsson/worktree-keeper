@@ -18,7 +18,7 @@ function fixture(t, published = false) {
     engines: { node: '>=20' }, volta: { node: '22.14.0', npm: '11.21.0' } };
   const config = writeProjectConfig(root, { git: published ? { releaseRequiredChecks: ['test'], releaseTestWorkflow: 'test.yml' } : {} });
   const hooks = planHooks({}).document;
-  const setup = () => [{ uses: 'actions/checkout@v4' }, { uses: 'volta-cli/action@v4' }, { run: 'npm ci' }];
+  const setup = () => [{ uses: 'actions/checkout@v7' }, { uses: 'volta-cli/action@v5' }, { run: 'npm ci' }];
   const workflow = { on: { pull_request: null }, jobs: { test: { steps: [...setup(), { run: 'npm test' }] } } };
   const publishing = { on: { push: { tags: ['v*'] } }, jobs: { publish: {
     permissions: { contents: 'read', 'id-token': 'write' }, steps: [...setup(),
@@ -56,6 +56,19 @@ for (const published of [false, true]) test(`public command validates ${publishe
 });
 
 const cases = [
+  ['old checkout runtime', f => { f.workflow.jobs.test.steps[0].uses = 'actions/checkout@v4'; }, /checkout@v5 or newer/],
+  ['old Volta runtime in publication', f => { f.publishing.jobs.publish.steps[1].uses = 'volta-cli/action@v4'; }, /volta-cli\/action@v5 or newer/],
+  ['unverifiable action ref', f => { f.workflow.jobs.test.steps[0].uses = 'actions/checkout@main'; }, /cannot be verified offline/],
+  ['moving runner image', f => { f.workflow.jobs.test['runs-on'] = 'ubuntu-latest'; }, /pin runner images/],
+  ['moving runner in label object', f => { f.workflow.jobs.test['runs-on'] = { labels: ['self-hosted', 'ubuntu-latest'] }; }, /pin runner images/],
+  ['moving matrix runner', f => {
+    f.workflow.jobs.test['runs-on'] = '${{ matrix.os }}';
+    f.workflow.jobs.test.strategy = { matrix: { os: ['ubuntu-24.04', 'windows-latest'] } };
+  }, /pin runner images/],
+  ['moving included matrix runner', f => {
+    f.workflow.jobs.test['runs-on'] = '${{ matrix.os }}';
+    f.workflow.jobs.test.strategy = { matrix: { include: [{ os: 'macos-latest' }] } };
+  }, /pin runner images/],
   ['unpinned Node', f => { f.manifest.volta.node = '22'; }, /pin an exact volta.node/],
   ['unpinned npm', f => { delete f.manifest.volta.npm; }, /pin an exact volta.npm/],
   ['incompatible engine', f => { f.manifest.engines.node = '>=24'; }, /satisfy engines.node/],
@@ -151,6 +164,17 @@ test('supports inherited verifier inputs and workflow permissions', t => {
   delete f.publishing.jobs.publish.steps[3].env;
   f.publishing.permissions = f.publishing.jobs.publish.permissions;
   delete f.publishing.jobs.publish.permissions;
+  f.save();
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('accepts Node24 action version floors, newer stable tags, and pinned matrix runners', t => {
+  const f = fixture(t);
+  f.workflow.jobs.test.steps[0].uses = 'actions/checkout@v5.0.0';
+  f.workflow.jobs.test.steps[1].uses = 'volta-cli/action@v6';
+  f.workflow.jobs.test['runs-on'] = '${{ matrix.os }}';
+  f.workflow.jobs.test.strategy = { matrix: { os: ['ubuntu-24.04', 'windows-2025'] } };
   f.save();
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
