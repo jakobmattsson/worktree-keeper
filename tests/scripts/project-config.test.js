@@ -79,3 +79,15 @@ test('project config validates required release check names', (t) => {
     assert.throws(() => projectConfig(root), /releaseRequiredChecks must be a nonempty array of unique check names/);
   }
 });
+
+test('project config accepts a separate release test workflow filename', (t) => {
+  const root = createRepository(t);
+  for (const filename of ['test.yml', 'ci-tests.yaml']) {
+    writeProjectConfig(root, { git: { releaseTestWorkflow: filename } });
+    assert.equal(projectConfig(root).git.releaseTestWorkflow, filename);
+  }
+  for (const filename of ['', null, 'test', '../test.yml', '.github/workflows/test.yml']) {
+    writeProjectConfig(root, { git: { releaseTestWorkflow: filename } });
+    assert.throws(() => projectConfig(root), /releaseTestWorkflow must be a workflow filename/);
+  }
+});

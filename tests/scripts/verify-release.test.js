@@ -37,7 +37,7 @@ function fixture() {
     if (endpoint.endsWith('/commits/merged')) return state.commit;
     throw new Error(`Unexpected endpoint: ${endpoint}`);
   };
-  return { state, calls, args: { api, slug: 'owner/repo', sha: 'merged', tag: 'v1.2.3', branch: 'main', checks: ['test', 'Test package'], workflow: 'package.yml' } };
+  return { state, calls, args: { api, slug: 'owner/repo', sha: 'merged', tag: 'v1.2.3', branch: 'main', checks: ['test', 'Test package'], workflow: 'test.yml' } };
 }
 
 function useRuleset(state) {
@@ -51,7 +51,7 @@ function useRuleset(state) {
 test('verifies a merged release using GitHub checks without artifacts', () => {
   const { args, calls } = fixture();
   verifyRelease(args);
-  assert.ok(calls.some(call => call.includes('event=pull_request&head_sha=pr-head')));
+  assert.ok(calls.some(call => call.includes('/workflows/test.yml/runs?event=pull_request&head_sha=pr-head')));
   assert.equal(calls.some(call => call.includes('artifact')), false);
 });
 
@@ -111,13 +111,18 @@ test('uses the configured branch and follows paginated rules', () => {
 test('workflow checks policy before testing and combines release verification before publishing', () => {
   const workflow = YAML.parse(fs.readFileSync(path.join(__dirname, '../../.github/workflows/package.yml'), 'utf8'));
   assert.equal(workflow.on.push.branches, undefined);
-  for (const name of ['test', 'package']) assert.equal(workflow.jobs[name].if, "${{ github.event_name == 'pull_request' }}");
+  const tests = YAML.parse(fs.readFileSync(path.join(__dirname, '../../.github/workflows/test.yml'), 'utf8'));
+  assert.deepEqual(Object.keys(workflow.jobs), ['publish']);
+  assert.deepEqual(Object.keys(workflow.on), ['push']);
+  assert.deepEqual(Object.keys(tests.on), ['pull_request']);
+  for (const name of ['test', 'package']) assert.equal(tests.jobs[name].if, "${{ github.event_name == 'pull_request' }}");
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../../worktree-keeper.config.json'), 'utf8'));
-  const prChecks = Object.entries(workflow.jobs)
+  const prChecks = Object.entries(tests.jobs)
     .filter(([, job]) => job.if === "${{ github.event_name == 'pull_request' }}")
     .map(([id, job]) => job.name || id);
   assert.deepEqual([...config.git.releaseRequiredChecks].sort(), prChecks.sort());
-  const steps = workflow.jobs.test.steps;
+  assert.equal(config.git.releaseTestWorkflow, 'test.yml');
+  const steps = tests.jobs.test.steps;
   const policy = steps.findIndex(step => step.run === 'node bin/worktree-keeper.js verify-release-protection');
   assert.ok(policy >= 0 && policy < steps.findIndex(step => step.run === 'npm test'));
   const publish = workflow.jobs.publish.steps;
@@ -157,4 +162,45 @@ else process.exit(2);
   assert.equal(denied.status, 1);
   assert.match(denied.stderr, /Administration read.*then rerun/);
   assert.equal(run(false).status, 0);
+});
+
+for (const separate of [true, false]) test(`public release verifier selects ${separate ? 'configured test' : 'fallback publish'} workflow`, t => {
+  const os = require('node:os');
+  const { execFileSync, spawnSync } = require('node:child_process');
+  const { writeProjectConfig } = require('./project-config-fixture');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-workflow-cli-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  execFileSync('git', ['init', '-q', root]);
+  execFileSync('git', ['-C', root, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git']);
+  writeProjectConfig(root, { git: { releaseRequiredChecks: ['test'], ...(separate ? { releaseTestWorkflow: 'test.yml' } : {}) } });
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'example', version: '1.2.3' }));
+  fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ version: '1.2.3', packages: { '': { version: '1.2.3' } } }));
+  fs.mkdirSync(path.join(root, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github/workflows/package.yml'), YAML.stringify({
+    on: { push: { tags: ['v*'] } }, jobs: { publish: {
+      if: "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}", steps: [{ run: 'npm publish' }],
+    } },
+  }));
+  execFileSync('git', ['-C', root, 'add', '.']);
+  execFileSync('git', ['-C', root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Release fixture']);
+  const bin = path.join(root, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/usr/bin/env node
+const endpoint = process.argv.at(-1);
+let response;
+if (endpoint.endsWith('/protection')) response = { enforce_admins: { enabled: true }, required_status_checks: { strict: true, contexts: ['test'] } };
+else if (endpoint.includes('/rules/branches/')) response = [];
+else if (endpoint.includes('/compare/')) response = { status: 'identical' };
+else if (endpoint.includes('/pulls?')) response = [{ merged_at: '2026-01-01', merge_commit_sha: 'merged', base: { ref: 'main', repo: { full_name: 'owner/repo' } }, head: { ref: 'release/v1.2.3', sha: 'head', repo: { full_name: 'owner/repo' } } }];
+else if (endpoint.includes('/workflows/${separate ? 'test.yml' : 'package.yml'}/runs?')) response = { workflow_runs: [{ id: 42, run_number: 1, conclusion: 'success' }] };
+else if (endpoint.includes('/runs/42/jobs?')) response = { jobs: [{ name: 'test', conclusion: 'success' }] };
+else if (/\\/commits\\/[a-f0-9]+$/.test(endpoint)) response = { sha: 'merged' };
+else { console.error('Unexpected endpoint: ' + endpoint); process.exit(1); }
+console.log(JSON.stringify(response));
+`, { mode: 0o755 });
+  const result = spawnSync(process.execPath, [path.join(__dirname, '../../bin/worktree-keeper.js'), 'verify-release'], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+      GH_CONFIG_DIR: path.join(root, 'gh-config'), GH_TOKEN: 'test-owned-token', RELEASE_TAG: 'v1.2.3' },
+  });
+  assert.equal(result.status, 0, result.stderr);
 });

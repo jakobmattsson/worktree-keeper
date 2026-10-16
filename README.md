@@ -32,7 +32,7 @@ Run `npm install` from the project root and commit the resulting `package-lock.j
 
 ### 2. `worktree-keeper.config.json`
 
-Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes`, `git.releaseMergeMethod`, and `git.releaseRequiredChecks` are optional fields described below; release commands require `git.releaseRequiredChecks`. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
+Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes`, `git.releaseMergeMethod`, `git.releaseRequiredChecks`, and `git.releaseTestWorkflow` are optional fields described below; release commands require `git.releaseRequiredChecks`. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
 
 ```json
 {
@@ -207,13 +207,12 @@ Install dependencies with `npm ci`. Review `npm pack --dry-run --json` before
 publishing; npm includes only `bin/`, `scripts/`, the README, and package metadata.
 
 Configure npm trusted publishing for this repository and the `package.yml`
-GitHub Actions workflow, with direct publishing enabled. The workflow runs tests
-and a package dry run, verifies that the tag matches both package versions, and
-publishes via OIDC. It needs no npm access token.
+GitHub Actions workflow, with direct publishing enabled. The workflow verifies
+the release and publishes via OIDC. It needs no npm access token.
 
-This workflow runs on pull requests and `v*` tags; merging to `main` does not
-start another run. PRs run `test` on Node.js 20 and `Test package` on Node.js 22.
-Tag pushes only verify and publish, without repeating those checks.
+`test.yml` runs on pull requests, with `test` on Node.js 20 and `Test package`
+on Node.js 22. `package.yml` runs on `v*` tags and only verifies and publishes.
+Merging to `main` does not start another run.
 
 Release verification uses GitHub's enforced branch policy instead of retaining
 artifacts of tested contents. Configure `git.releaseRequiredChecks` in the root
@@ -308,6 +307,9 @@ publish job. Add `worktree-keeper verify-release-protection` to a required PR
 test job and `worktree-keeper verify-release` before publishing, with `GH_TOKEN`
 and `RELEASE_TAG` set for release verification. Both commands are shipped with
 the package; no verifier script or artifact upload needs to be copied.
-All configured check names must be jobs in the publish workflow's PR run.
+Set optional `git.releaseTestWorkflow` to the PR workflow filename (for this
+repository: `"test.yml"`). If omitted, verification uses the publish workflow
+filename for compatibility with combined workflows. All configured check names
+must be jobs in the selected PR workflow's run.
 The `publish` job must use its exact tag condition and contain a step whose
 command is exactly `npm publish`. Workspaces are not supported.

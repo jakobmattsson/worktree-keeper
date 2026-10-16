@@ -4,6 +4,7 @@
     "defaultBranch": "main",
     "branchPrefix": "codex/",
     "checkpointPushRemotes": ["origin"],
+    "releaseTestWorkflow": "test.yml",
     "releaseRequiredChecks": ["test", "Test package"]
   },
   "tests": {

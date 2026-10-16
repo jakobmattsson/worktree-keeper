@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify strict release checks
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
+        run: node bin/worktree-keeper.js verify-release-protection
+      - run: npm test
+
+  package:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Test package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: npm ci
+      - run: npm pack --dry-run --json

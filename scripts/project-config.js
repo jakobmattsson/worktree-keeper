@@ -31,7 +31,7 @@ function requireNonemptyString(value, location, file) {
 
 function validateConfig(config, file) {
   requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
-  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod', 'releaseRequiredChecks']);
+  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod', 'releaseRequiredChecks', 'releaseTestWorkflow']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 
   for (const field of ['remote', 'defaultBranch', 'branchPrefix']) {
@@ -44,6 +44,11 @@ function validateConfig(config, file) {
           || remote !== remote.trim() || remote.startsWith('-'))
         || new Set(remotes).size !== remotes.length) {
       throw new Error(`${file}: git.checkpointPushRemotes must be an array of unique remote names`);
+    }
+  }
+  if (Object.hasOwn(config.git, 'releaseTestWorkflow')) {
+    if (typeof config.git.releaseTestWorkflow !== 'string' || !/^[A-Za-z0-9_-]+\.ya?ml$/u.test(config.git.releaseTestWorkflow)) {
+      throw new Error(`${file}: git.releaseTestWorkflow must be a workflow filename ending in .yml or .yaml`);
     }
   }
   if (Object.hasOwn(config.git, 'releaseRequiredChecks')) {

@@ -17,8 +17,9 @@ try {
   const api = githubApi((command, args, options) => spawnSync(command, args, { ...options, encoding: 'utf8' }), cwd, host);
   const tag = process.env.RELEASE_TAG;
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const publishWorkflow = inspectWorkflow(cwd, tag);
   verifyRelease({ api, slug, sha, tag, branch: config.git.defaultBranch,
-    checks: requiredChecks(cwd), workflow: path.basename(inspectWorkflow(cwd, tag).path) });
+    checks: requiredChecks(cwd), workflow: config.git.releaseTestWorkflow || path.basename(publishWorkflow.path) });
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
