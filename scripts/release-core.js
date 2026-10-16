@@ -121,6 +121,15 @@ function acceptsTag(on, tag) {
         return Array.isArray(filters['tags-ignore']) && !matchesTag(filters['tags-ignore'], tag);
     return true;
 }
+function onlyReleaseTagPushes(on) {
+    if (!on || typeof on !== 'object' || Array.isArray(on)
+        || Object.keys(on).length !== 1 || !Object.hasOwn(on, 'push')) return false;
+    const push = on.push;
+    if (!push || typeof push !== 'object' || Array.isArray(push)
+        || ['branches', 'branches-ignore', 'tags-ignore'].some(key => Object.hasOwn(push, key))) return false;
+    return Array.isArray(push.tags) && push.tags.some(pattern => typeof pattern === 'string' && pattern.startsWith('v'))
+        && push.tags.every(pattern => typeof pattern === 'string' && (pattern.startsWith('!') || pattern.startsWith('v')));
+}
 function inspectWorkflow(cwd, tag) {
     const directory = path.join(cwd, '.github', 'workflows');
     const files = fs.existsSync(directory)
@@ -139,8 +148,8 @@ function inspectWorkflow(cwd, tag) {
         if (!document?.jobs || !Object.hasOwn(document.jobs, 'publish'))
             continue;
         const job = document.jobs.publish;
-        if (!job || job.if !== requiredCondition) {
-            throw new ReleaseError(`${relativePath}: publish job needs the exact required if condition.`);
+        if (!job || (job.if !== requiredCondition && (Object.hasOwn(job, 'if') || !onlyReleaseTagPushes(document.on)))) {
+            throw new ReleaseError(`${relativePath}: publish job needs the exact required if condition unless the workflow only triggers on v-prefixed tag pushes.`);
         }
         if (!Array.isArray(job.steps) || !job.steps.some((step) => step?.run === 'npm publish')) {
             throw new ReleaseError(`${relativePath}: publish job needs a step whose run is exactly npm publish.`);

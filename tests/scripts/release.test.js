@@ -51,8 +51,7 @@ function fixture(directory) {
         name: 'example', version: '1.3.5', lockfileVersion: 3,
         packages: { '': { name: 'example', version: '1.3.5' } },
     }));
-    const condition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
-    writeWorkflow(repo, condition, 'npm publish', 'v*');
+    writeWorkflow(repo, undefined, 'npm publish', 'v*');
     require('./project-config-fixture').writeProjectConfig(repo, { git: { releaseRequiredChecks: ['test'] } });
     git('add', '.');
     git('commit', '-m', 'initial');
@@ -151,7 +150,7 @@ function fakeServices(testFixture, settings) {
 function writeWorkflow(directory, condition, command, trigger) {
     const workflows = path.join(directory, '.github', 'workflows');
     fs.mkdirSync(workflows, { recursive: true });
-    fs.writeFileSync(path.join(workflows, 'package.yml'), `on:\n  push:\n    tags: ['${trigger}']\njobs:\n  publish:\n    name: Publish to npm\n    if: ${condition}\n    steps:\n      - run: ${command}\n`);
+    fs.writeFileSync(path.join(workflows, 'package.yml'), `on:\n  push:\n    tags: ['${trigger}']\njobs:\n  publish:\n    name: Publish to npm\n${condition === undefined ? '' : `    if: ${condition}\n`}    steps:\n      - run: ${command}\n`);
 }
 test('release level increments exactly one stable version component', () => {
     assert.equal(release.nextVersion('1.3.5', 'major'), '2.0.0');
@@ -238,7 +237,7 @@ test('version commit also works for a package without an npm lockfile', () => {
         assert.equal(git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'), 'package.json');
     });
 });
-test('publish workflow requires the exact job condition, command, and tag trigger', () => {
+test('publish workflow validates explicit job conditions, command, and tag trigger', () => {
     withTemporaryRepository((directory) => {
         const condition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
         writeWorkflow(directory, condition, 'npm publish', 'v*');
@@ -629,5 +628,48 @@ test('release rechecks policy before merge and stops if it changed after preflig
         }), /strict status checks/);
         assert.equal(services.calls.some(call => call.includes('repos/owner/repo/pulls/7/merge')), false);
         assert.equal(project.git('ls-remote', '--tags', 'origin'), '');
+    });
+});
+
+for (const scenario of [
+    { name: 'release tag pushes', on: { push: { tags: ['v*'] } }, accepted: true },
+    { name: 'release tags with exclusions', on: { push: { tags: ['v*', '!v0.*'] } }, accepted: true },
+    { name: 'combined PR workflow', on: { push: { tags: ['v*'] }, pull_request: null } },
+    { name: 'manual dispatch', on: { push: { tags: ['v*'] }, workflow_dispatch: null } },
+    { name: 'branch and tag pushes', on: { push: { tags: ['v*'], branches: ['main'] } } },
+    { name: 'branch exclusions and tags', on: { push: { tags: ['v*'], 'branches-ignore': ['scratch'] } } },
+    { name: 'all pushes', on: 'push' },
+    { name: 'event list', on: ['push', 'pull_request'] },
+    { name: 'unfiltered push object', on: { push: null } },
+    { name: 'all tags', on: { push: { tags: ['*'] } } },
+    { name: 'mixed tag prefixes', on: { push: { tags: ['v*', 'other-*'] } } },
+    { name: 'tag exclusions alone', on: { push: { 'tags-ignore': ['other-*'] } } },
+]) {
+    test(`publish job without if ${scenario.accepted ? 'accepts' : 'rejects'} ${scenario.name}`, () => {
+        withTemporaryRepository(directory => {
+            const YAML = require('yaml');
+            const workflows = path.join(directory, '.github/workflows');
+            fs.mkdirSync(workflows, { recursive: true });
+            const document = { on: scenario.on, jobs: { publish: { steps: [{ run: 'npm publish' }] } } };
+            const file = path.join(workflows, 'package.yml');
+            fs.writeFileSync(file, YAML.stringify(document));
+            if (scenario.accepted) {
+                assert.equal(release.inspectWorkflow(directory, 'v1.3.6').path, '.github/workflows/package.yml');
+            } else {
+                assert.throws(() => release.inspectWorkflow(directory, 'v1.3.6'), /exact required if condition/);
+                document.jobs.publish.if = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
+                fs.writeFileSync(file, YAML.stringify(document));
+                assert.equal(release.inspectWorkflow(directory, 'v1.3.6').path, '.github/workflows/package.yml');
+            }
+        });
+    });
+}
+
+test('tag-only publish workflow still rejects explicit null and false job conditions', () => {
+    withTemporaryRepository(directory => {
+        for (const condition of ['null', 'false']) {
+            writeWorkflow(directory, condition, 'npm publish', 'v*');
+            assert.throws(() => release.inspectWorkflow(directory, 'v1.3.6'), /exact required if condition/);
+        }
     });
 });

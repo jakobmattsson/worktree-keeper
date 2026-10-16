@@ -115,10 +115,9 @@ test('workflow checks policy before testing and combines release verification be
   assert.deepEqual(Object.keys(workflow.jobs), ['publish']);
   assert.deepEqual(Object.keys(workflow.on), ['push']);
   assert.deepEqual(Object.keys(tests.on), ['pull_request']);
-  for (const name of ['test', 'package']) assert.equal(tests.jobs[name].if, "${{ github.event_name == 'pull_request' }}");
+  for (const job of [...Object.values(tests.jobs), ...Object.values(workflow.jobs)]) assert.equal(Object.hasOwn(job, 'if'), false);
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../../worktree-keeper.config.json'), 'utf8'));
   const prChecks = Object.entries(tests.jobs)
-    .filter(([, job]) => job.if === "${{ github.event_name == 'pull_request' }}")
     .map(([id, job]) => job.name || id);
   assert.deepEqual([...config.git.releaseRequiredChecks].sort(), prChecks.sort());
   assert.equal(config.git.releaseTestWorkflow, 'test.yml');

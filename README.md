@@ -346,5 +346,9 @@ Set optional `git.releaseTestWorkflow` to the PR workflow filename (for this
 repository: `"test.yml"`). If omitted, verification uses the publish workflow
 filename for compatibility with combined workflows. All configured check names
 must be jobs in the selected PR workflow's run.
-The `publish` job must use its exact tag condition and contain a step whose
-command is exactly `npm publish`. Workspaces are not supported.
+The `publish` job must contain a step whose command is exactly `npm publish`.
+Its `if` can be omitted when the workflow triggers only on pushes of
+`v`-prefixed tags (for example, `on.push.tags: ['v*']`), with no branch triggers.
+For combined workflows or other triggers, the job must use the exact condition
+`${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}`.
+Explicit alternative job conditions are not supported. Workspaces are not supported.
