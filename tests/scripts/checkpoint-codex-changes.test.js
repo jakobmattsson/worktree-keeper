@@ -198,3 +198,94 @@ test('checkpoint arguments require a subject and one or more body paragraphs', (
     /at least one non-empty commit body paragraph is required/,
   );
 });
+
+test('checkpoint publishes a new branch to multiple explicit remotes', (t) => {
+  const fixture = createRepository(t);
+  const backup = path.join(path.dirname(fixture.remote), 'backup.git');
+  git(fixture.repository, 'init', '--bare', backup);
+  git(fixture.repository, 'remote', 'add', 'backup', backup);
+  writeProjectConfig(fixture.repository, {
+    git: { checkpointPushRemotes: ['origin', 'backup'] },
+  });
+  const result = checkpoint(fixture.repository, {
+    subject: 'Publish checkpoint',
+    bodyParagraphs: ['Publish the new task branch to both configured remotes.'],
+  }, () => {});
+  assert.deepEqual(result, { committed: true, pushed: true });
+  const head = git(fixture.repository, 'rev-parse', 'HEAD');
+  for (const remote of [fixture.remote, backup]) {
+    assert.equal(git(remote, 'rev-parse', 'refs/heads/codex/test-checkpoint'), head);
+  }
+  assert.equal(git(fixture.repository, 'rev-parse', '--abbrev-ref', '@{upstream}'),
+    'origin/codex/test-checkpoint');
+});
+
+test('empty checkpoint remotes disable push even for a published branch', (t) => {
+  const fixture = createRepository(t, true);
+  const original = git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint');
+  writeProjectConfig(fixture.repository, { git: { checkpointPushRemotes: [] } });
+  assert.deepEqual(checkpoint(fixture.repository, {
+    subject: 'Keep checkpoint local',
+    bodyParagraphs: ['Disable checkpoint pushes explicitly.'],
+  }, () => {}), { committed: true, pushed: false });
+  assert.equal(git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint'), original);
+});
+
+test('checkpoint retries a partial push failure without another commit', (t) => {
+  const fixture = createRepository(t);
+  writeProjectConfig(fixture.repository, {
+    git: { checkpointPushRemotes: ['origin', 'backup'] },
+  });
+  const message = {
+    subject: 'Retry checkpoint pushes',
+    bodyParagraphs: ['Keep failures visible until every configured remote accepts the checkpoint.'],
+  };
+  assert.throws(() => checkpoint(fixture.repository, message, () => {}),
+    /checkpoint remote backup is not configured in Git/);
+  const head = git(fixture.repository, 'rev-parse', 'HEAD');
+  assert.equal(git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint'), head);
+  assert.equal(fs.existsSync(markerPath(fixture.repository)), true);
+  const backup = path.join(path.dirname(fixture.remote), 'backup.git');
+  git(fixture.repository, 'init', '--bare', backup);
+  git(fixture.repository, 'remote', 'add', 'backup', backup);
+  assert.deepEqual(checkpoint(fixture.repository, message, () => {}),
+    { committed: false, pushed: true });
+  assert.equal(git(fixture.repository, 'rev-parse', 'HEAD'), head);
+  assert.equal(git(backup, 'rev-parse', 'refs/heads/codex/test-checkpoint'), head);
+  assert.equal(fs.existsSync(markerPath(fixture.repository)), false);
+});
+
+test('explicit checkpoint pushes refuse non-fast-forward updates', (t) => {
+  const fixture = createRepository(t, true);
+  writeProjectConfig(fixture.repository, { git: { checkpointPushRemotes: ['origin'] } });
+  git(fixture.primaryRepository, 'switch', '-c', 'codex/remote-change');
+  fs.writeFileSync(path.join(fixture.primaryRepository, 'remote.txt'), 'remote change\n');
+  git(fixture.primaryRepository, 'add', 'remote.txt');
+  git(fixture.primaryRepository, 'commit', '-m', 'Independent remote change');
+  git(fixture.primaryRepository, 'push', 'origin', 'HEAD:refs/heads/codex/test-checkpoint');
+  const remoteHead = git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint');
+  assert.throws(() => checkpoint(fixture.repository, {
+    subject: 'Preserve remote work',
+    bodyParagraphs: ['Refuse to overwrite a diverged remote task branch.'],
+  }, () => {}), /rejected|fetch first|non-fast-forward/);
+  assert.equal(git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint'), remoteHead);
+  assert.equal(fs.existsSync(markerPath(fixture.repository)), true);
+});
+
+test('explicit remotes replace the legacy remote push target', (t) => {
+  const fixture = createRepository(t, true);
+  const original = git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint');
+  const backup = path.join(path.dirname(fixture.remote), 'backup.git');
+  git(fixture.repository, 'init', '--bare', backup);
+  git(fixture.repository, 'remote', 'add', 'backup', backup);
+  writeProjectConfig(fixture.repository, { git: { checkpointPushRemotes: ['backup'] } });
+  assert.deepEqual(checkpoint(fixture.repository, {
+    subject: 'Push only to backup',
+    bodyParagraphs: ['Use the explicit remote list instead of the default push target.'],
+  }, () => {}), { committed: true, pushed: true });
+  assert.equal(git(backup, 'rev-parse', 'refs/heads/codex/test-checkpoint'),
+    git(fixture.repository, 'rev-parse', 'HEAD'));
+  assert.equal(git(fixture.remote, 'rev-parse', 'refs/heads/codex/test-checkpoint'), original);
+  assert.equal(git(fixture.repository, 'rev-parse', '--abbrev-ref', '@{upstream}'),
+    'origin/codex/test-checkpoint');
+});

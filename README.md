@@ -32,7 +32,7 @@ Run `npm install` from the project root and commit the resulting `package-lock.j
 
 ### 2. `worktree-keeper.config.json`
 
-Place this required file at the caller's Git root. All fields shown here are required and any extra field is rejected. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
+Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes` is an optional field described below. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
 
 ```json
 {
@@ -51,6 +51,26 @@ Place this required file at the caller's Git root. All fields shown here are req
 ```
 
 `git.remote` and `git.defaultBranch` identify the branch used for checkpointing and cleanup. `git.branchPrefix` names new task branches. `tests.commands` are complete shell commands, run in order from the caller's Git root; install any executables they use. The test runner stops on the first failure and records a receipt only after every command succeeds. `receiptMaxAgeMinutes` controls how long a receipt can be reused. Set `npmTestUsesRunner` to `true` only when the caller's `npm test` script invokes `worktree-keeper run-tests`; this makes the rerun hint `npm test -- rerun`. Otherwise the hint uses the explicit package path. `loggingDirectory` stores hook invocation logs relative to the primary Git worktree's root.
+
+To publish checkpoint branches automatically, add `checkpointPushRemotes` to `git`:
+
+```json
+{
+  "remote": "origin",
+  "defaultBranch": "main",
+  "branchPrefix": "codex/",
+  "checkpointPushRemotes": ["origin", "backup"]
+}
+```
+
+Each name must identify a Git remote configured in the calling repository. With this
+setting, checkpoints push to exactly those remotes, creating the task branch if
+needed. An empty list disables checkpoint pushes. When the field is omitted,
+checkpoints keep the previous behavior: push only when the branch already exists
+on `git.remote`. Pushes never use force. Only a push to `git.remote` sets the
+branch's upstream. If a push fails, earlier pushes are kept and the checkpoint
+records a failure; fix the cause and rerun the checkpoint command to retry without
+creating another commit when there are no new changes.
 
 Receipts are stored outside the repository under `worktree-keeper-test-receipts` in Node.js's `os.tmpdir()`. Each Git root has a separate receipt file. Receipt validation fingerprints changed files and the process environment. In CI, the runner always runs the configured commands instead of reusing a receipt.
 
@@ -90,7 +110,7 @@ Place this file in the caller's `.codex` directory:
 }
 ```
 
-The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. Both hooks act on linked worktrees and leave the primary worktree alone. When uncommitted changes remain, the `Stop` hook asks the agent to review the diff and run `checkpoint-codex-changes` with a descriptive English commit message. That command stages all changes and commits them on a task branch; it refuses the configured default branch. It pushes without force only if the branch already exists on the configured remote, otherwise the branch stays local.
+The commands resolve the package from the current Git worktree. Install dependencies in each worktree where the hooks will run; the commands need that worktree's `node_modules/worktree-keeper`. Both hooks act on linked worktrees and leave the primary worktree alone. When uncommitted changes remain, the `Stop` hook asks the agent to review the diff and run `checkpoint-codex-changes` with a descriptive English commit message. That command stages all changes and commits them on a task branch; it refuses the configured default branch. With `git.checkpointPushRemotes`, it pushes without force to each listed remote, including new branches. Without that setting, it pushes only if the branch already exists on `git.remote`, otherwise the branch stays local.
 
 `SessionEnd` starts a detached worker to clean up the session worktree and branch only if the captured branch tip is still unchanged and fully merged into the remote default branch. Dirty or locked worktrees are kept. Worker output is appended to `cleanup-ended-session.log` in the shared Git directory. Cleanup does not require the primary worktree to have the default branch checked out. A local default branch that can fast-forward is updated before cleanup: a branch not checked out in any worktree is moved atomically, while a checked-out branch is merged in its clean worktree so its files and index stay synchronized. A dirty or diverged default branch is left unchanged. Codex loads project hooks only after the project hook source is trusted; review them with `/hooks`. The three-second `SessionEnd` timeout is the maximum documented for that event. See the [Codex hooks reference](https://learn.chatgpt.com/docs/hooks) for hook loading, trust, and timeout behavior.
 
@@ -99,7 +119,7 @@ The commands resolve the package from the current Git worktree. Install dependen
 From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, `npm run cleanup:branches` to preview merged branch cleanup, and `npm run cleanup:empty-directories` to preview removal of empty directories and directories containing only ignored files. The latter command protects the root `.git`, `node_modules`, and `tmp` directories; other selected directories are removed recursively, including their ignored contents. Add `-- --execute` to either cleanup package script to apply it. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
 
 This repository uses the same hooks and configuration, with commands pointing to
-its own `bin/worktree-keeper.js` instead of an installed copy. There is no dependency
+its own `bin/worktree-keeper.js` instead of an installed copy. Its `git.checkpointPushRemotes` is set to `["origin"]` to publish checkpoint branches automatically. There is no dependency
 on a published version of itself. `npm exec --no -- worktree-keeper` also resolves
 the root package's own bin, including the checkpoint command requested by the
 Stop hook. Install dependencies with `npm ci` to run the full test suite.

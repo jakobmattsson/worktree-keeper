@@ -45,3 +45,15 @@ test('project config rejects missing, unknown, and invalid fields', (t) => {
   rejects({ ...valid, tests: { ...valid.tests, commands: [] } },
     /tests.commands must be a nonempty array/);
 });
+
+test('project config accepts optional checkpoint remotes and rejects invalid lists', (t) => {
+  const root = createRepository(t);
+  for (const remotes of [[], ['origin'], ['origin', 'backup']]) {
+    const config = writeProjectConfig(root, { git: { checkpointPushRemotes: remotes } });
+    assert.deepEqual(projectConfig(root), { root: fs.realpathSync(root), ...config });
+  }
+  for (const remotes of [null, 'origin', [1], [''], [' origin'], ['-all'], ['origin', 'origin']]) {
+    writeProjectConfig(root, { git: { checkpointPushRemotes: remotes } });
+    assert.throws(() => projectConfig(root), /git.checkpointPushRemotes must be an array of unique remote names/);
+  }
+});
