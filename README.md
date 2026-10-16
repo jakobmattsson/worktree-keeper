@@ -198,11 +198,19 @@ GitHub Actions workflow, with direct publishing enabled. The workflow runs tests
 and a package dry run, verifies that the tag matches both package versions, and
 publishes via OIDC. It needs no npm access token.
 
-This single workflow runs on pull requests, pushes to `main`, and `v*` tags.
-The `test` check runs the test suite on Node.js 20; `Test package` checks the
-package contents on Node.js 22. Both checks must pass before a tag can publish.
-Only tag pushes run the publish job. Keep the `package.yml` filename unchanged:
-npm trusted publishing is configured for that workflow file.
+This workflow runs on pull requests and `v*` tags; merging to `main` does not
+start another run. PRs run `test` on Node.js 20 and `Test package` on Node.js 22.
+Tag pushes only verify and publish, without repeating those checks.
+
+Before publishing, the workflow requires the tag to point to the merge commit
+of a same-repository `release/v<version>` PR into `main`. Its latest CI run must
+have passed both required checks. The tagged Git tree must match the tree
+recorded by that run, including when GitHub used a temporary merge commit for
+testing. Test evidence is retained for 90 days; missing or expired evidence
+requires rerunning the release PR's CI before publishing. Manual tags without
+this evidence are rejected. Version checks still require matching package and
+lockfile versions. Keep the `package.yml` filename unchanged: npm trusted
+publishing is configured for that workflow file.
 
 Release merge selection reads the calling repository's root
 `worktree-keeper.config.json`, not the installed package's configuration:
@@ -255,6 +263,8 @@ that needs manual cleanup.
 Other npm projects can use this command through a package script such as
 `"release": "worktree-keeper release"`. The project must use a root package
 with a stable version and the supported tag-triggered GitHub Actions publish
-job. Use `.github/workflows/package.yml` as the template: the `publish` job
+job. This repository’s PR-evidence policy is local to its workflow; callers
+using it must also copy `.github/scripts/verify-release.cjs` and the evidence
+upload step, or supply their own publication checks. The `publish` job
 must use its exact tag condition and contain a step whose command is exactly
 `npm publish`. Workspaces are not supported.
