@@ -1,6 +1,18 @@
 {
   "description": "Repository lifecycle hooks.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/worktree-keeper.js\" checkpoint-codex-session-start",
+            "timeout": 30,
+            "statusMessage": "Loading Codex checkpoint instructions"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

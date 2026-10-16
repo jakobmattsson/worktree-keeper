@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Commit the current Codex worktree and update an already published branch.
+ * Commit the current Codex worktree and push to configured remotes.
  *
- * A new local branch stays local. When the same branch already exists on
- * the configured remote, the new commit is pushed without force. Failures are recorded inside
+ * Explicit checkpoint remotes also receive new branches. Without that setting,
+ * only an existing branch on the configured remote is pushed. Failures are recorded inside
  * the worktree's Git metadata so the Stop hook can keep them visible.
  */
 
@@ -143,7 +143,7 @@ function checkpoint(repositoryRoot, message, log = console.log) {
     branch = runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], {
       cwd: repositoryRoot,
     });
-    const { defaultBranch, remote } = projectConfig(repositoryRoot).git;
+    const { defaultBranch, remote, checkpointPushRemotes } = projectConfig(repositoryRoot).git;
     if (branch === defaultBranch) {
       throw new Error(`refusing to checkpoint changes directly on ${defaultBranch}`);
     }
@@ -176,20 +176,31 @@ function checkpoint(repositoryRoot, message, log = console.log) {
       return { committed: false, pushed: false };
     }
 
-    if (!remoteBranchExists(repositoryRoot, branch)) {
+    const pushRemotes = checkpointPushRemotes ?? (
+      remoteBranchExists(repositoryRoot, branch) ? [remote] : []
+    );
+    if (pushRemotes.length === 0) {
       clearFailureMarker(repositoryRoot);
-      log(`Kept ${branch} local because ${remote}/${branch} does not exist.`);
+      log(checkpointPushRemotes === undefined
+        ? `Kept ${branch} local because ${remote}/${branch} does not exist.`
+        : `Kept ${branch} local because checkpoint push is disabled.`);
       return { committed: status !== '', pushed: false };
     }
 
-    runGit([
-      'push',
-      '--set-upstream',
-      remote,
-      `HEAD:refs/heads/${branch}`,
-    ], { cwd: repositoryRoot });
+    for (const pushRemote of pushRemotes) {
+      const configuredRemotes = runGit(['remote'], { cwd: repositoryRoot }).split('\n');
+      if (!configuredRemotes.includes(pushRemote)) {
+        throw new Error(`checkpoint remote ${pushRemote} is not configured in Git`);
+      }
+      runGit([
+        'push',
+        ...(remote === pushRemote ? ['--set-upstream'] : []),
+        pushRemote,
+        `HEAD:refs/heads/${branch}`,
+      ], { cwd: repositoryRoot });
+      log(`Pushed ${branch} to ${pushRemote}/${branch}.`);
+    }
     clearFailureMarker(repositoryRoot);
-    log(`Pushed ${branch} to ${remote}/${branch}.`);
     return { committed: status !== '', pushed: true };
   } catch (error) {
     try {

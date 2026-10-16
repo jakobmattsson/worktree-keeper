@@ -2,7 +2,8 @@
   "git": {
     "remote": "origin",
     "defaultBranch": "main",
-    "branchPrefix": "codex/"
+    "branchPrefix": "codex/",
+    "checkpointPushRemotes": ["origin"]
   },
   "tests": {
     "commands": [

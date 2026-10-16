@@ -11,6 +11,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const { markerPath } = require('./checkpoint-codex-changes.js');
 const { projectConfig } = require('./project-config');
+const { checkpointInstructions } = require('./checkpoint-instructions');
 const {
   isPrimaryWorktree,
   logScriptInvocation,
@@ -67,33 +68,14 @@ function buildResponse(event) {
     };
   }
 
-  const branch = spawnSync(
-    'git',
-    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
-    { cwd: event.cwd, encoding: 'utf8' },
-  );
-  const branchInstruction = branch.status === 0 && branch.stdout.trim() !== config.git.defaultBranch
-    ? ''
-    : ` First create and switch to a descriptive task branch named with the ${config.git.branchPrefix} prefix.`;
   const failureInstruction = failure
     ? ` The previous checkpoint failed with: ${failure.error}. Resolve that failure first.`
     : '';
 
   return {
     decision: 'block',
-    reason: 'The worktree must be checkpointed before you finish.'
-      + branchInstruction
-      + failureInstruction
-      + ' Review the completed diff and write an English commit message with a concise, '
-      + 'descriptive single-line subject and a body separated from it by a blank line. '
-      + 'The body should explain what the commit does in enough detail for its scope, using '
-      + 'between one and ten sentences; avoid unnecessary verbosity, but explain substantial '
-      + 'changes thoroughly. Run `npm exec --no -- worktree-keeper '
-      + 'checkpoint-codex-changes '
-      + '--subject "<subject>" --body "<body paragraph>"`; repeat `--body` for additional '
-      + 'paragraphs when useful. '
-      + 'Do not make unrelated changes. '
-      + 'After the command succeeds, finish your response.',
+    reason: checkpointInstructions(config)
+      + failureInstruction,
   };
 }
 

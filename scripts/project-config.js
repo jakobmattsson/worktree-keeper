@@ -11,12 +11,12 @@ function repositoryRoot(cwd = process.cwd()) {
   }).trim();
 }
 
-function requireExactKeys(value, keys, location, file) {
+function requireExactKeys(value, keys, location, file, optionalKeys = []) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${file}: ${location} must be an object`);
   }
   for (const key of Object.keys(value)) {
-    if (!keys.includes(key)) throw new Error(`${file}: unknown field ${location}.${key}`);
+    if (!keys.includes(key) && !optionalKeys.includes(key)) throw new Error(`${file}: unknown field ${location}.${key}`);
   }
   for (const key of keys) {
     if (!Object.hasOwn(value, key)) throw new Error(`${file}: missing field ${location}.${key}`);
@@ -31,11 +31,20 @@ function requireNonemptyString(value, location, file) {
 
 function validateConfig(config, file) {
   requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
-  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file);
+  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 
   for (const field of ['remote', 'defaultBranch', 'branchPrefix']) {
     requireNonemptyString(config.git[field], `git.${field}`, file);
+  }
+  if (Object.hasOwn(config.git, 'checkpointPushRemotes')) {
+    const remotes = config.git.checkpointPushRemotes;
+    if (!Array.isArray(remotes)
+        || remotes.some((remote) => typeof remote !== 'string' || remote.trim() === ''
+          || remote !== remote.trim() || remote.startsWith('-'))
+        || new Set(remotes).size !== remotes.length) {
+      throw new Error(`${file}: git.checkpointPushRemotes must be an array of unique remote names`);
+    }
   }
   requireNonemptyString(config.loggingDirectory, 'loggingDirectory', file);
   if (!Array.isArray(config.tests.commands) || config.tests.commands.length === 0
