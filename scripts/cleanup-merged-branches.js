@@ -199,6 +199,34 @@ function printAction(execute, dryRunText, executeText, log) {
   log(execute ? executeText : `Would ${dryRunText}`);
 }
 
+function localPlanChangedReason(repositoryRoot, item) {
+  if (!item.local) return null;
+  try {
+    const branchRef = `refs/heads/${item.branch}`;
+    const tip = runGit(['rev-parse', '--verify', branchRef], { cwd: repositoryRoot }).trim();
+    if (tip !== item.localObjectId) return 'its local branch changed after planning';
+
+    const current = listWorktrees(repositoryRoot);
+    const attached = current.filter((worktree) => worktree.branch === branchRef);
+    if (attached.length !== item.worktrees.length) return 'its worktrees changed after planning';
+
+    for (const planned of item.worktrees) {
+      const worktree = current.find((candidate) => samePath(candidate.path, planned.path));
+      if (!worktree || worktree.branch !== branchRef || worktree.HEAD !== item.localObjectId) {
+        return `its worktree changed after planning: ${planned.path}`;
+      }
+      if (Object.hasOwn(worktree, 'locked')) return `its worktree is locked: ${planned.path}`;
+      if (samePath(worktree.path, repositoryRoot)) return `it is checked out in the current worktree: ${planned.path}`;
+      if (runGit(['status', '--porcelain', '--untracked-files=all'], { cwd: planned.path }) !== '') {
+        return `its worktree has changes: ${planned.path}`;
+      }
+    }
+  } catch (error) {
+    return `its local state could not be verified: ${error.message}`;
+  }
+  return null;
+}
+
 function applyPlan(repositoryRoot, plan, execute, log = console.log) {
   const { remote } = projectConfig(repositoryRoot).git;
   let removedWorktrees = 0;
@@ -206,14 +234,15 @@ function applyPlan(repositoryRoot, plan, execute, log = console.log) {
   let deletedRemoteBranches = 0;
   let skippedBranches = 0;
 
-  for (const item of plan) {
-    if (item.skipReason) {
-      log(`Skip ${item.branch}: ${item.skipReason}`);
+  items: for (const item of plan) {
+    const skipReason = item.skipReason || (execute && localPlanChangedReason(repositoryRoot, item));
+    if (skipReason) {
+      log(`Skip ${item.branch}: ${skipReason}`);
       skippedBranches += 1;
       continue;
     }
 
-    for (const worktree of item.worktrees) {
+    for (const [index, worktree] of item.worktrees.entries()) {
       printAction(
         execute,
         `remove worktree ${worktree.path} (branch ${item.branch})`,
@@ -221,6 +250,14 @@ function applyPlan(repositoryRoot, plan, execute, log = console.log) {
         log,
       );
       if (execute) {
+        const changedReason = localPlanChangedReason(repositoryRoot, {
+          ...item, worktrees: item.worktrees.slice(index),
+        });
+        if (changedReason) {
+          log(`Skip ${item.branch}: ${changedReason}`);
+          skippedBranches += 1;
+          continue items;
+        }
         runGit(['worktree', 'remove', worktree.path], { cwd: repositoryRoot });
       }
       removedWorktrees += 1;
@@ -234,6 +271,12 @@ function applyPlan(repositoryRoot, plan, execute, log = console.log) {
         log,
       );
       if (execute) {
+        const changedReason = localPlanChangedReason(repositoryRoot, { ...item, worktrees: [] });
+        if (changedReason) {
+          log(`Skip ${item.branch}: ${changedReason}`);
+          skippedBranches += 1;
+          continue;
+        }
         runGit([
           'update-ref',
           '-d',

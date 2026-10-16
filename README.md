@@ -74,6 +74,12 @@ creating another commit when there are no new changes.
 
 Receipts are stored outside the repository under `worktree-keeper-test-receipts` in Node.js's `os.tmpdir()`. Each Git root has a separate receipt file. Receipt validation fingerprints changed files and the process environment. In CI, the runner always runs the configured commands instead of reusing a receipt.
 
+Starting a new test run invalidates any previous receipt, including when a forced
+rerun fails. The runner compares repository contents and the test environment
+before and after the commands. If either changes during the run, it exits with
+an error and records no receipt; rerun the tests on the resulting contents.
+Test-generated files should be ignored or written outside the repository.
+
 ### 3. `.codex/hooks.json`
 
 Install or update the project hooks from the caller's Git worktree:
@@ -170,6 +176,13 @@ them. The shared policy then follows the installed package version.
 ## Check the setup
 
 From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, `npm run cleanup:branches` to preview merged branch cleanup, and `npm run cleanup:empty-directories` to preview removal of empty directories and directories containing only ignored files. The latter command protects the root `.git`, `node_modules`, and `tmp` directories; other selected directories are removed recursively, including their ignored contents. Add `-- --execute` to either cleanup package script to apply it. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
+
+Directory cleanup also preserves nested Git repositories and linked worktrees,
+including their parent directories when those parents are ignored. It does not
+clean inside those repositories. Branch cleanup rechecks local branch tips and
+worktree identity, locks, and changes before removal; a changed plan is skipped
+before deleting the affected worktree or branches. Remote branch deletion still
+uses an exact-commit lease.
 
 This repository uses the same hooks and configuration, with commands pointing to
 its own `bin/worktree-keeper.js` instead of an installed copy. Its `git.checkpointPushRemotes` is set to `["origin"]` to publish checkpoint branches automatically. There is no dependency

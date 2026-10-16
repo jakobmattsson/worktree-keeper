@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
 const { checkReceipt, successMessage } = require('./check-test-receipt');
 const { recordReceipt } = require('./record-test-receipt');
 const { projectConfig } = require('./project-config');
+const { receiptPath, snapshot } = require('./receipt-state');
 
 function run(command, root) {
   const result = spawnSync(command, { cwd: root, stdio: 'inherit', shell: true });
@@ -32,6 +34,8 @@ function main() {
     console.log(successMessage(config.root));
     return;
   }
+  fs.rmSync(receiptPath(config.root), { force: true });
+  const testedSnapshot = snapshot(config.root);
   for (const command of config.tests.commands) {
     const status = run(command, config.root);
     if (status !== 0) {
@@ -39,7 +43,7 @@ function main() {
       return;
     }
   }
-  recordReceipt();
+  recordReceipt(config.root, testedSnapshot);
 }
 
 if (require.main === module) {
