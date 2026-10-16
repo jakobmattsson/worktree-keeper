@@ -19,6 +19,7 @@
     "scripts/"
   ],
   "scripts": {
+    "pretest": "node bin/worktree-keeper.js check-project",
     "test": "node bin/worktree-keeper.js run-tests",
     "release": "node bin/worktree-keeper.js release",
     "cleanup:branches": "node bin/worktree-keeper.js cleanup-merged-branches",
@@ -28,6 +29,11 @@
     "node": ">=20"
   },
   "dependencies": {
+    "semver": "^7.8.5",
     "yaml": "^2.9.1"
+  },
+  "volta": {
+    "node": "22.14.0",
+    "npm": "11.21.0"
   }
 }

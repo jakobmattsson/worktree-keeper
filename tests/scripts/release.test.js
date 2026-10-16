@@ -51,8 +51,8 @@ function fixture(directory) {
         name: 'example', version: '1.3.5', lockfileVersion: 3,
         packages: { '': { name: 'example', version: '1.3.5' } },
     }));
-    const condition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
-    writeWorkflow(repo, condition, 'npm publish', 'v*');
+    writeWorkflow(repo, undefined, 'npm publish', 'v*');
+    require('./project-config-fixture').writeProjectConfig(repo, { git: { releaseRequiredChecks: ['test'] } });
     git('add', '.');
     git('commit', '-m', 'initial');
     git('push', '-u', 'origin', 'main');
@@ -89,6 +89,11 @@ function fakeServices(testFixture, settings) {
                 response = { default_branch: 'main', allow_merge_commit: true, allow_rebase_merge: true,
                     allow_squash_merge: true, ...settings.repository };
             }
+            else if (endpoint.endsWith('/branches/main/protection')) {
+                if (settings.policyError) return { status: 1, stderr: settings.policyError };
+                response = { enforce_admins: { enabled: true }, required_status_checks: { strict: !settings.loosePolicy, contexts: ['test'] } };
+            }
+            else if (endpoint.includes('/rules/branches/main?')) response = [];
             else if (endpoint === 'repos/owner/repo/pulls') response = pr ? [pr] : [];
             else if (endpoint.endsWith('/pulls/7/merge')) {
                 if (settings.blockMerge) return { status: 1, stderr: 'HTTP 405: required checks pending' };
@@ -145,7 +150,7 @@ function fakeServices(testFixture, settings) {
 function writeWorkflow(directory, condition, command, trigger) {
     const workflows = path.join(directory, '.github', 'workflows');
     fs.mkdirSync(workflows, { recursive: true });
-    fs.writeFileSync(path.join(workflows, 'package.yml'), `on:\n  push:\n    tags: ['${trigger}']\njobs:\n  publish:\n    name: Publish to npm\n    if: ${condition}\n    steps:\n      - run: ${command}\n`);
+    fs.writeFileSync(path.join(workflows, 'package.yml'), `on:\n  push:\n    tags: ['${trigger}']\njobs:\n  publish:\n    name: Publish to npm\n${condition === undefined ? '' : `    if: ${condition}\n`}    steps:\n      - run: ${command}\n`);
 }
 test('release level increments exactly one stable version component', () => {
     assert.equal(release.nextVersion('1.3.5', 'major'), '2.0.0');
@@ -232,7 +237,7 @@ test('version commit also works for a package without an npm lockfile', () => {
         assert.equal(git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'), 'package.json');
     });
 });
-test('publish workflow requires the exact job condition, command, and tag trigger', () => {
+test('publish workflow validates explicit job conditions, command, and tag trigger', () => {
     withTemporaryRepository((directory) => {
         const condition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
         writeWorkflow(directory, condition, 'npm publish', 'v*');
@@ -534,7 +539,7 @@ for (const scenario of [
             const project = fixture(directory);
             if (scenario.preference !== undefined) {
                 require('./project-config-fixture').writeProjectConfig(project.repo, {
-                    git: { releaseMergeMethod: scenario.preference },
+                    git: { releaseMergeMethod: scenario.preference, releaseRequiredChecks: ['test'] },
                 });
                 project.git('add', '.');
                 project.git('commit', '-m', 'Configure caller merge preference');
@@ -588,3 +593,83 @@ for (const legacy of [false, true]) {
         });
     });
 }
+
+for (const [name, settings, message] of [
+    ['loose branch policy', { loosePolicy: true }, /strict status checks/],
+    ['unreadable branch policy', { policyError: 'HTTP 403: Forbidden' }, /Administration read.*rerun/],
+]) {
+    test(`release stops before creating a PR with ${name}`, async () => {
+        await withTemporaryRepositoryAsync(async directory => {
+            const project = fixture(directory);
+            const services = fakeServices(project, settings);
+            await assert.rejects(release.release('patch', {
+                cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+                now: services.now, sleep: services.sleep, log: () => {},
+            }), message);
+            assert.equal(services.calls.some(call => call[0] === 'gh' && call[1] === 'pr'), false);
+            assert.equal(services.calls.some(call => call[0] === 'git' && call[1] === 'push'), false);
+        });
+    });
+}
+
+test('release rechecks policy before merge and stops if it changed after preflight', async () => {
+    await withTemporaryRepositoryAsync(async directory => {
+        const project = fixture(directory);
+        const settings = {};
+        const services = fakeServices(project, settings);
+        const spawn = (command, args, options) => {
+            const result = services.spawnSync(command, args, options);
+            if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') settings.loosePolicy = true;
+            return result;
+        };
+        await assert.rejects(release.release('patch', {
+            cwd: project.repo, spawnSync: spawn, environment: {},
+            now: services.now, sleep: services.sleep, log: () => {},
+        }), /strict status checks/);
+        assert.equal(services.calls.some(call => call.includes('repos/owner/repo/pulls/7/merge')), false);
+        assert.equal(project.git('ls-remote', '--tags', 'origin'), '');
+    });
+});
+
+for (const scenario of [
+    { name: 'release tag pushes', on: { push: { tags: ['v*'] } }, accepted: true },
+    { name: 'release tags with exclusions', on: { push: { tags: ['v*', '!v0.*'] } }, accepted: true },
+    { name: 'combined PR workflow', on: { push: { tags: ['v*'] }, pull_request: null } },
+    { name: 'manual dispatch', on: { push: { tags: ['v*'] }, workflow_dispatch: null } },
+    { name: 'branch and tag pushes', on: { push: { tags: ['v*'], branches: ['main'] } } },
+    { name: 'branch exclusions and tags', on: { push: { tags: ['v*'], 'branches-ignore': ['scratch'] } } },
+    { name: 'all pushes', on: 'push' },
+    { name: 'event list', on: ['push', 'pull_request'] },
+    { name: 'unfiltered push object', on: { push: null } },
+    { name: 'all tags', on: { push: { tags: ['*'] } } },
+    { name: 'mixed tag prefixes', on: { push: { tags: ['v*', 'other-*'] } } },
+    { name: 'tag exclusions alone', on: { push: { 'tags-ignore': ['other-*'] } } },
+]) {
+    test(`publish job without if ${scenario.accepted ? 'accepts' : 'rejects'} ${scenario.name}`, () => {
+        withTemporaryRepository(directory => {
+            const YAML = require('yaml');
+            const workflows = path.join(directory, '.github/workflows');
+            fs.mkdirSync(workflows, { recursive: true });
+            const document = { on: scenario.on, jobs: { publish: { steps: [{ run: 'npm publish' }] } } };
+            const file = path.join(workflows, 'package.yml');
+            fs.writeFileSync(file, YAML.stringify(document));
+            if (scenario.accepted) {
+                assert.equal(release.inspectWorkflow(directory, 'v1.3.6').path, '.github/workflows/package.yml');
+            } else {
+                assert.throws(() => release.inspectWorkflow(directory, 'v1.3.6'), /exact required if condition/);
+                document.jobs.publish.if = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
+                fs.writeFileSync(file, YAML.stringify(document));
+                assert.equal(release.inspectWorkflow(directory, 'v1.3.6').path, '.github/workflows/package.yml');
+            }
+        });
+    });
+}
+
+test('tag-only publish workflow still rejects explicit null and false job conditions', () => {
+    withTemporaryRepository(directory => {
+        for (const condition of ['null', 'false']) {
+            writeWorkflow(directory, condition, 'npm publish', 'v*');
+            assert.throws(() => release.inspectWorkflow(directory, 'v1.3.6'), /exact required if condition/);
+        }
+    });
+});

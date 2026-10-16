@@ -30,8 +30,18 @@ function requireNonemptyString(value, location, file) {
 }
 
 function validateConfig(config, file) {
-  requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
-  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod']);
+  requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file, ['projectChecks']);
+  if (Object.hasOwn(config, 'projectChecks')) {
+    requireExactKeys(config.projectChecks, ['testWorkflow', 'requiredJobs'], 'projectChecks', file);
+    if (typeof config.projectChecks.testWorkflow !== 'string' || !/^[A-Za-z0-9_-]+\.ya?ml$/u.test(config.projectChecks.testWorkflow)) {
+      throw new Error(`${file}: projectChecks.testWorkflow must be a workflow filename`);
+    }
+    const jobs = config.projectChecks.requiredJobs;
+    if (!Array.isArray(jobs) || !jobs.length || jobs.some(job => typeof job !== 'string' || !job.trim() || job !== job.trim()) || new Set(jobs).size !== jobs.length) {
+      throw new Error(`${file}: projectChecks.requiredJobs must contain unique nonempty job names`);
+    }
+  }
+  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod', 'releaseRequiredChecks', 'releaseTestWorkflow']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 
   for (const field of ['remote', 'defaultBranch', 'branchPrefix']) {
@@ -44,6 +54,17 @@ function validateConfig(config, file) {
           || remote !== remote.trim() || remote.startsWith('-'))
         || new Set(remotes).size !== remotes.length) {
       throw new Error(`${file}: git.checkpointPushRemotes must be an array of unique remote names`);
+    }
+  }
+  if (Object.hasOwn(config.git, 'releaseTestWorkflow')) {
+    if (typeof config.git.releaseTestWorkflow !== 'string' || !/^[A-Za-z0-9_-]+\.ya?ml$/u.test(config.git.releaseTestWorkflow)) {
+      throw new Error(`${file}: git.releaseTestWorkflow must be a workflow filename ending in .yml or .yaml`);
+    }
+  }
+  if (Object.hasOwn(config.git, 'releaseRequiredChecks')) {
+    const checks = config.git.releaseRequiredChecks;
+    if (!Array.isArray(checks) || !checks.length || checks.some(check => typeof check !== 'string' || !check.trim() || check !== check.trim()) || new Set(checks).size !== checks.length) {
+      throw new Error(`${file}: git.releaseRequiredChecks must be a nonempty array of unique check names`);
     }
   }
   if (Object.hasOwn(config.git, 'releaseMergeMethod')

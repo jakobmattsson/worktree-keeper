@@ -3,7 +3,9 @@
     "remote": "origin",
     "defaultBranch": "main",
     "branchPrefix": "codex/",
-    "checkpointPushRemotes": ["origin"]
+    "checkpointPushRemotes": ["origin"],
+    "releaseTestWorkflow": "test.yml",
+    "releaseRequiredChecks": ["test", "Test package"]
   },
   "tests": {
     "commands": [
