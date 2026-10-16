@@ -246,6 +246,41 @@ through workflow YAML. After correcting access or rules, rerun the failed job.
 Fork PRs do not receive this secret and fail the policy check; do not expose it
 by executing fork code with `pull_request_target`.
 
+To set this up for this repository:
+
+1. Open the [token creation form with the required read permissions prefilled](https://github.com/settings/personal-access-tokens/new?name=worktree-keeper-release-policy&target_name=jakobmattsson&expires_in=90&administration=read&contents=read&pull_requests=read&actions=read).
+   For repository rulesets, use the [form with Administration write instead](https://github.com/settings/personal-access-tokens/new?name=worktree-keeper-release-policy&target_name=jakobmattsson&expires_in=90&administration=write&contents=read&pull_requests=read&actions=read)
+   so GitHub exposes bypass actors. For another repository, change the resource
+   owner. Select **Only select repositories**, choose `worktree-keeper`, review
+   the permissions and expiration, and generate the token. If the owner requires
+   approval, wait until the token is approved.
+2. Save the token as an Actions secret with the following command. `gh` prompts
+   for the value interactively; paste the token at the prompt, keeping it out of
+   the command and shell history. The `gh` account running this command needs
+   permission to manage repository Actions secrets. The policy token itself
+   does not need Secrets permission.
+
+   ```sh
+   gh secret set RELEASE_POLICY_TOKEN --repo jakobmattsson/worktree-keeper
+   ```
+
+3. Confirm the secret name exists, then find and rerun the failed test workflow:
+
+   ```sh
+   gh secret list --repo jakobmattsson/worktree-keeper
+   gh run list --repo jakobmattsson/worktree-keeper --workflow test.yml --limit 5
+   gh run rerun RUN_ID --failed --repo jakobmattsson/worktree-keeper
+   ```
+
+   Replace `RUN_ID` with the run ID from the listing. To retry publication, list
+   runs with `--workflow package.yml` instead. When the token expires, create a
+   replacement and run `gh secret set` again to update the same secret.
+
+GitHub requires fine-grained PAT creation in the browser; `gh` can store the
+resulting token as a secret but cannot create that PAT. See [GitHub's token setup
+documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#pre-filling-fine-grained-personal-access-token-details-using-url-parameters)
+and the [`gh secret set` reference](https://cli.github.com/manual/gh_secret_set).
+
 This policy trusts GitHub to enforce the checked settings when merging. It does
 not retain historical proof of the tested file tree if administrators change
 settings between CI and merge. Keep the `package.yml` filename unchanged: npm
