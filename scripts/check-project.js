@@ -46,6 +46,37 @@ function checkProject(cwd = process.cwd()) {
     requireThat(workflows.size, 'Add a PR workflow in .github/workflows.');
   });
 
+  // These are runtime compatibility floors, not a list of latest releases.
+  const actionMinimums = new Map([['actions/checkout', 5], ['volta-cli/action', 5]]);
+  for (const [file, workflow] of workflows) {
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      check('CI', () => {
+        const runner = job?.['runs-on'];
+        const labels = typeof runner === 'object' && !Array.isArray(runner) ? runner?.labels : runner;
+        const values = (Array.isArray(labels) ? labels : [labels]).flatMap(label => {
+          if (typeof label !== 'string') return [];
+          const keys = [...label.matchAll(/\$\{\{\s*matrix\.([\w-]+)\s*\}\}/gu)].map(match => match[1]);
+          return [label, ...keys.flatMap(key => {
+            const matrix = job.strategy?.matrix;
+            return [matrix?.[key], ...(matrix?.include || []).map(entry => entry[key])].flat();
+          })];
+        });
+        requireThat(!values.some(value => typeof value === 'string' && /(?:^|[^\w-])[\w-]+-latest(?:$|[^\w-])/u.test(value)),
+          `${file}/${id}: pin runner images (for example ubuntu-24.04) instead of moving *-latest labels.`);
+        for (const step of job?.steps || []) {
+          if (typeof step?.uses !== 'string') continue;
+          const separator = step.uses.lastIndexOf('@');
+          const action = step.uses.slice(0, separator);
+          const minimum = actionMinimums.get(action);
+          if (!minimum) continue;
+          const version = /^v(\d+)(?:\.\d+){0,2}$/u.exec(step.uses.slice(separator + 1));
+          requireThat(version && Number(version[1]) >= minimum,
+            `${file}/${id}: use ${action}@v${minimum} or newer with a stable version tag; older releases use deprecated Node.js action runtimes. SHA and branch refs cannot be verified offline.`);
+        }
+      });
+    }
+  }
+
   check('tools', () => {
     for (const name of ['node', 'npm']) {
       requireThat(semver.valid(manifest.volta?.[name]) === manifest.volta?.[name] && typeof manifest.volta?.[name] === 'string',

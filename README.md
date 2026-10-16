@@ -217,7 +217,15 @@ The checks cover:
 - **Hooks:** the lifecycle hooks supplied by `install-hooks` must be present once
   each, use current definitions, and have no group conditions. Unrelated hooks
   are allowed. Run `worktree-keeper install-hooks` to repair old definitions.
-- **CI:** the selected workflow must run on PRs targeting the default branch,
+- **CI:** all workflows must use `actions/checkout@v5` or newer and
+  `volta-cli/action@v5` or newer when those actions are present. These minimums
+  avoid their deprecated Node.js 20 runtimes; stable version tags are required
+  because SHA and branch refs cannot be verified offline. Runner labels must
+  avoid moving `*-latest` images; use a versioned image such as `ubuntu-24.04`.
+  Direct labels, label objects, and `matrix.<key>` references (including matrix
+  `include` entries) are checked. Other dynamic runner expressions are not resolved.
+  These checks catch known configuration issues, not every possible GitHub annotation.
+  The selected workflow must run on PRs targeting the default branch,
   without path or event-type filters. Required jobs and their dependencies must
   not skip PR checks or allow failure. Required test jobs must run `npm ci`
   before tests or package validation, with neither step conditional or allowed
