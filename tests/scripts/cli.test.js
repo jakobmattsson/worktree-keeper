@@ -1,22 +1,15 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
 const test = require('node:test');
 
 const cli = path.resolve(__dirname, '../../bin/worktree-keeper.js');
-const commands = [
-  'release',
-  'run-tests',
-  'check-test-receipt',
-  'record-test-receipt',
-  'checkpoint-codex-changes',
-  'checkpoint-codex-session-start',
-  'checkpoint-codex-stop',
-  'cleanup-ended-session',
-  'queue-merged-worktree-cleanup',
-  'cleanup-merged-branches',
-  'remove-empty-directories',
-];
+const scripts = path.resolve(__dirname, '../../scripts');
+const commands = fs.readdirSync(scripts)
+  .filter((name) => name.endsWith('.js')
+    && fs.readFileSync(path.join(scripts, name), 'utf8').startsWith('#!/usr/bin/env node'))
+  .map((name) => name.slice(0, -3));
 
 function run(...args) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
@@ -27,6 +20,9 @@ test('--help lists every command and its purpose', () => {
 
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
+  const listed = [...result.stdout.matchAll(/^  ([\w-]+) +\S/gm)]
+    .map((match) => match[1]);
+  assert.deepEqual(listed.sort(), [...commands].sort());
   assert.match(result.stdout, /Usage: worktree-keeper <command> \[arguments\]/);
   for (const command of commands) {
     assert.match(result.stdout, new RegExp(`^  ${command} +\\S`, 'm'));

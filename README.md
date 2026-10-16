@@ -76,7 +76,34 @@ Receipts are stored outside the repository under `worktree-keeper-test-receipts`
 
 ### 3. `.codex/hooks.json`
 
-Place this file in the caller's `.codex` directory:
+Install or update the project hooks from the caller's Git worktree:
+
+```sh
+npm exec --no -- worktree-keeper install-hooks --dry-run
+npm exec --no -- worktree-keeper install-hooks
+```
+
+The command creates or updates `.codex/hooks.json` at the Git root. It preserves
+other handlers, their order, group settings, and other configuration fields.
+Known Worktree Keeper invocations are replaced with current definitions and
+duplicates are removed. Our hooks are installed in their own groups, without
+inheriting another group's matcher. Repeating the command makes no further change.
+
+Supported migrations include standalone `worktree-keeper`, `npm exec --no --`,
+`npx --no-install`, documented `node` bin paths, and direct `node scripts/` hook
+invocations. Unknown wrappers, composed shell commands, and additional handler
+options are not replaced automatically. If an entry appears related to Worktree
+Keeper but cannot be safely migrated, the command exits with an error identifying
+it and leaves the entire file unchanged. Review that entry, preserve any custom
+logic as a separate hook, then rerun the installer. Wrappers whose names do not
+identify Worktree Keeper cannot be detected; review those yourself before installing.
+
+The installer writes atomically and rejects malformed files. It changes only
+`.codex/hooks.json`, not `AGENTS.md`, project configuration, or hooks in other
+configuration layers. Configure Git remotes, tests, and dependencies separately,
+and review and trust the installed hooks with `/hooks` in Codex.
+
+The installed file contains these definitions (other existing hooks are retained):
 
 ```json
 {
@@ -129,10 +156,10 @@ The commands resolve the package from the current Git worktree. Install dependen
 ### Adopting shared checkpoint instructions
 
 For a project that already uses the Stop hook, upgrade to a package release that
-includes `checkpoint-codex-session-start` and add the `SessionStart` entry above.
-Keep `Stop` and `SessionEnd`. Review and trust the updated hooks with `/hooks`,
-then start a new session or resume one to load the instructions. The new command
-is not available in older releases, including the pinned `0.8.0` example above;
+includes `checkpoint-codex-session-start` and `install-hooks`, then run the installer above.
+The installer also updates `Stop` and `SessionEnd`. Review and trust the updated hooks with `/hooks`,
+then start a new session or resume one to load the instructions. These commands
+are not available in older releases, including the pinned `0.8.0` example above;
 update that pin when adopting this feature after publication.
 
 Remove the duplicated checkpoint section from the project's `AGENTS.md` once the

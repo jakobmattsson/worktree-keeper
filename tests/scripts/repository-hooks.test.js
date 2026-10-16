@@ -34,6 +34,13 @@ test('repository hooks and checkpoint resolve local source without a self depend
   run('git', ['push', 'origin', 'main']);
   run('git', ['worktree', 'add', '-b', 'codex/hook-setup', linked]);
   assert.equal(fs.existsSync(path.join(linked, 'node_modules')), false);
+  const beforeInstall = fs.readFileSync(path.join(source, '.codex/hooks.json'), 'utf8');
+  // The installer uses local bin paths when run from its own package checkout.
+  const installResult = spawnSync(process.execPath, [path.join(source, 'bin/worktree-keeper.js'),
+    'install-hooks', '--dry-run'], { cwd: source, encoding: 'utf8' });
+  assert.equal(installResult.status, 0, installResult.stderr);
+  assert.match(installResult.stdout, /already up to date/);
+  assert.equal(fs.readFileSync(path.join(source, '.codex/hooks.json'), 'utf8'), beforeInstall);
   const hooks = JSON.parse(fs.readFileSync(path.join(linked, '.codex/hooks.json'), 'utf8'));
   function hook(event, eventCwd = linked) {
     const definition = hooks.hooks[event][0].hooks[0];
