@@ -96,7 +96,22 @@ The commands resolve the package from the current Git worktree. Install dependen
 
 From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, `npm run cleanup:branches` to preview merged branch cleanup, and `npm run cleanup:empty-directories` to preview removal of directories containing only ignored files. Add `-- --execute` to either cleanup package script to apply it. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
 
-Run `npm test` in this repository to verify the shared package itself.
+This repository uses the same hooks and configuration, with commands pointing to
+its own `bin/worktree-keeper.js` instead of an installed copy. There is no dependency
+on a published version of itself. `npm exec --no -- worktree-keeper` also resolves
+the root package's own bin, including the checkpoint command requested by the
+Stop hook. Install dependencies with `npm ci` to run the full test suite.
+
+Run `npm test` in this repository to verify the shared package itself, or
+`npm test -- rerun` to force a fresh run. Its configured test command runs Node's
+test runner directly, avoiding recursion through `npm test`. The cleanup package
+scripts work the same way as in calling projects.
+
+When first adopting these hooks, make sure the primary checkout also contains
+`worktree-keeper.config.json` before trusting them with `/hooks`: invocation logs
+are stored there and session cleanup reads that checkout's configuration.
+The hook definitions can then be reviewed and trusted in Codex; committing them
+does not grant trust automatically.
 
 ## Publish an npm release
 
@@ -109,16 +124,37 @@ and a package dry run, verifies that the tag matches both package versions, and
 publishes via OIDC. It needs no npm access token.
 
 From a clean repository root, run `npm run release -- patch`, `minor`, or `major`.
-The command checks the GitHub publish workflow, switches to the synchronized
-default branch, increments the version in `package.json` and `package-lock.json`,
-commits and pushes it, then pushes the matching `v<version>` tag. It waits for
+The command fetches the default branch and uses a temporary detached worktree to
+increment the package and lockfile versions. Your current branch and local default
+branch stay unchanged, including when the default branch is checked out elsewhere.
+It pushes a `release/v<version>` branch and opens a release PR. GitHub must allow
+squash merging. The command waits up to 20 minutes for GitHub to accept the merge,
+respecting required checks, reviews, resolved conversations, and branch freshness.
+It never uses an administrator bypass or pushes directly to the default branch.
+
+After merge, the command verifies the package files at the PR's actual merge
+commit, tags that commit with `v<version>`, and pushes the tag. The existing
+workflow publishes through npm trusted publishing. The command then waits for
 the publish job and for the version to appear on npm. Git and an authenticated
-GitHub CLI (`gh`) with repository and Actions access are required. Inspect local
-and remote state before retrying an interrupted release.
-Registry checks use a temporary npm cache and request current metadata, so a
-recently published version is not hidden by an earlier cached response.
-If authentication or another preflight check fails, resolve that problem before
-retrying the release command; do not create the version commit or tag manually.
+GitHub CLI (`gh`) with Contents read/write, Pull requests read/write, and Actions
+read access are required. Registry checks use a temporary npm cache and request
+current metadata.
+
+Retry the same command and release type after an interruption: release state is
+stored in `worktree-keeper-release.json` in the shared Git directory, so retries
+from another worktree of the same checkout continue the same PR and version.
+Already-merged PRs and already-pushed matching tags are reused. A local lock
+prevents concurrent commands in that checkout; an open release PR from a different
+checkout blocks a new release. Do not delete the state or manually create a new
+version commit or tag to retry. If publishing failed, fix the cause and rerun the
+tag workflow on GitHub before retrying the command.
+
+If merge requirements remain unmet, the command stops without tagging. Resolve
+those requirements and retry. Conflicts, a changed PR head, or a changed base
+require inspection before continuing; the command refuses to silently publish
+an altered release. Temporary worktrees are removed when the command exits
+normally or with a handled error; a killed process may leave a temporary worktree
+that needs manual cleanup.
 
 Other npm projects can use this command through a package script such as
 `"release": "worktree-keeper release"`. The project must use a root package

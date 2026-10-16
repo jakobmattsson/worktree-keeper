@@ -61,6 +61,8 @@ function fixture(directory) {
 function fakeServices(testFixture, settings) {
     const calls = [];
     let registryChecks = 0;
+    let pr;
+    let mergedSha;
     const completed = Date.parse('2026-10-11T12:00:00Z');
     let now = completed + 3_000;
     const spawnSync = (command, args, options) => {
@@ -68,21 +70,45 @@ function fakeServices(testFixture, settings) {
         if (command === 'git' && args[0] === 'remote' && args[1] === 'get-url') {
             return { status: 0, stdout: 'git@github.com:owner/repo.git\n', stderr: '' };
         }
-        if (command === 'git' && args[0] === 'push' && args[2] === 'HEAD:refs/heads/main' && settings.failBranchPush) {
+        if (command === 'git' && args[0] === 'push' && args[2]?.endsWith(':refs/heads/release/v1.3.6') && settings.failBranchPush) {
             return { status: 1, stdout: '', stderr: 'non-fast-forward' };
         }
         if (command === 'git' && args[0] === 'push' && args[2] === 'refs/tags/v1.3.6' && settings.failTagPush) {
             return { status: 1, stdout: '', stderr: 'tag rejected' };
         }
         if (command === 'gh') {
+            if (args[0] === 'pr' && args[1] === 'create') {
+                pr = { number: 7, state: 'open', merged: false,
+                    head: { ref: 'release/v1.3.6', sha: testFixture.git('rev-parse', 'refs/worktree-keeper/releases/v1.3.6') },
+                    base: { ref: 'main' } };
+                return { status: 0, stdout: 'https://github.com/owner/repo/pull/7', stderr: '' };
+            }
             const endpoint = args[5];
             let response;
             if (endpoint === 'repos/owner/repo') {
                 response = { default_branch: 'main' };
             }
+            else if (endpoint === 'repos/owner/repo/pulls') response = pr ? [pr] : [];
+            else if (endpoint.endsWith('/pulls/7/merge')) {
+                if (settings.blockMerge) return { status: 1, stderr: 'HTTP 405: required checks pending' };
+                if (!pr.merged) {
+                    const dir = options.cwd;
+                    const tree = testFixture.command(dir, 'git', ['rev-parse', `${pr.head.sha}^{tree}`]).stdout.trim();
+                    mergedSha = testFixture.command(dir, 'git', ['commit-tree', tree, '-p', testFixture.git('rev-parse', 'origin/main'), '-m', 'Squashed release']).stdout.trim();
+                    assert.equal(testFixture.command(dir, 'git', ['push', 'origin', `${mergedSha}:refs/heads/main`]).status, 0);
+                    pr.merged = true;
+                    pr.merge_commit_sha = mergedSha;
+                    if (settings.advanceMain) {
+                        const later = testFixture.command(dir, 'git', ['commit-tree', tree, '-p', mergedSha, '-m', 'Later change']).stdout.trim();
+                        assert.equal(testFixture.command(dir, 'git', ['push', 'origin', `${later}:refs/heads/main`]).status, 0);
+                    }
+                }
+                response = { merged: true, sha: mergedSha };
+            }
+            else if (endpoint.endsWith('/pulls/7')) response = pr;
             else if (endpoint.endsWith('/workflows/package.yml/runs')) {
                 response = { workflow_runs: [
-                        { id: 42, head_sha: testFixture.git('rev-parse', 'HEAD'), head_branch: 'v1.3.6',
+                        { id: 42, head_sha: mergedSha, head_branch: 'v1.3.6',
                             path: '.github/workflows/package.yml' },
                     ] };
             }
@@ -350,29 +376,19 @@ test('registry wait measures from the workflow completion without real time dela
         'Workflow run for v1.3.6 completed in 90.0 seconds; waiting for @example/package@1.3.6 on npm.',
     ]);
 });
-test('release stops before versioning when the worktree is dirty or default branch diverges', () => {
+test('preflight rejects dirty work but leaves a divergent feature branch unchanged', () => {
     withTemporaryRepository((directory) => {
         const project = fixture(directory);
-        const services = fakeServices(project, { failBranchPush: false, failJob: false });
+        const services = fakeServices(project, {});
         fs.writeFileSync(path.join(project.repo, 'untracked.txt'), 'local work');
-        assert.throws(() => release.prepare(services.spawnSync, project.repo, 'patch', () => { }), /uncommitted or untracked/u);
-        fs.rmSync(path.join(project.repo, 'untracked.txt'));
-        fs.writeFileSync(path.join(project.repo, 'local.txt'), 'local commit');
-        project.git('add', 'local.txt');
+        assert.throws(() => release.prepare(services.spawnSync, project.repo, 'patch', () => {}), /uncommitted or untracked/u);
+        project.git('add', '.');
         project.git('commit', '-m', 'local');
-        assert.throws(() => release.prepare(services.spawnSync, project.repo, 'patch', () => { }), /differs from origin\/main/u);
-        assert.equal(services.calls.some(([command, subcommand]) => command === 'npm' && subcommand === 'version'), false);
-    });
-});
-test('preflight switches a clean feature branch to the synchronized default branch', () => {
-    withTemporaryRepository((directory) => {
-        const project = fixture(directory);
         project.git('switch', '-c', 'feature');
-        const services = fakeServices(project, { failBranchPush: false, failTagPush: false, failJob: false });
-        const details = release.prepare(services.spawnSync, project.repo, 'patch', () => { });
-        assert.equal(details.defaultBranch, 'main');
-        assert.equal(project.git('branch', '--show-current'), 'main');
-        assert.equal(release.readPackage(project.repo).version, '1.3.5');
+        const sha = project.git('rev-parse', 'HEAD');
+        assert.equal(release.prepare(services.spawnSync, project.repo, 'patch', () => {}).version, '1.3.6');
+        assert.equal(project.git('branch', '--show-current'), 'feature');
+        assert.equal(project.git('rev-parse', 'HEAD'), sha);
     });
 });
 test('preflight refuses to reuse an existing release tag', () => {
@@ -391,7 +407,7 @@ test('a failed branch push leaves no version tag', async () => {
             cwd: project.repo, spawnSync: services.spawnSync, environment: {},
             now: services.now, sleep: services.sleep, log: () => { },
         }), /non-fast-forward/u);
-        assert.equal(project.git('log', '-1', '--format=%B'), '1.3.6');
+        assert.equal(project.git('log', '-1', '--format=%B'), 'initial');
         assert.equal(project.command(project.repo, 'git', ['show-ref', '--verify', '--quiet', 'refs/tags/v1.3.6']).status, 1);
         assert.equal(services.calls.some(([command, subcommand]) => command === 'git' && subcommand === 'tag'), false);
     });
@@ -404,12 +420,12 @@ test('a failed tag push stops before workflow polling', async () => {
             cwd: project.repo, spawnSync: services.spawnSync, environment: {},
             now: services.now, sleep: services.sleep, log: () => { },
         }), /tag rejected/u);
-        assert.equal(project.git('rev-parse', 'refs/tags/v1.3.6'), project.git('rev-parse', 'HEAD'));
+        assert.equal(project.git('rev-parse', 'refs/tags/v1.3.6'), project.git('rev-parse', 'origin/main'));
         assert.equal(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), '');
         assert.equal(services.calls.some((call) => call[0] === 'gh' && call[6]?.includes('/actions/')), false);
     });
 });
-test('CLI accepts a mocked spawnSync and pushes the version before waiting for npm visibility', async () => {
+test('CLI merges a release PR and tags the squash commit before waiting for npm visibility', async () => {
     await withTemporaryRepositoryAsync(async (directory) => {
         const project = fixture(directory);
         const services = fakeServices(project, { failBranchPush: false, failJob: false });
@@ -420,11 +436,13 @@ test('CLI accepts a mocked spawnSync and pushes the version before waiting for n
             spawnSync: services.spawnSync, now: services.now, sleep: services.sleep,
             log: (message) => messages.push(message),
         });
-        const sha = project.git('rev-parse', 'HEAD');
+        const sha = project.git('rev-parse', 'origin/main');
+        assert.notEqual(sha, project.git('rev-parse', 'HEAD'));
+        assert.equal(release.readPackage(project.repo).version, '1.3.5');
         assert.match(project.git('ls-remote', 'origin', 'refs/heads/main'), new RegExp(`^${sha}`, 'u'));
         assert.match(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), new RegExp(`^${sha}`, 'u'));
         const branchPush = services.calls.findIndex((call) => call[0] === 'git' && call[1] === 'push' &&
-            call[3] === 'HEAD:refs/heads/main');
+            call[3]?.endsWith(':refs/heads/release/v1.3.6'));
         const tag = services.calls.findIndex((call) => call[0] === 'git' && call[1] === 'tag');
         const tagPush = services.calls.findIndex((call) => call[0] === 'git' && call[1] === 'push' &&
             call[3] === 'refs/tags/v1.3.6');
@@ -442,5 +460,58 @@ test('a failed publish job stops before npm registry polling', async () => {
             now: services.now, sleep: services.sleep, log: () => { },
         }), /Publish job .* ended as failure/u);
         assert.equal(services.registryChecks(), 0);
+    });
+});
+
+test('blocked merge can resume, and a failed tag push resumes without another bump or PR', async () => {
+    await withTemporaryRepositoryAsync(async (directory) => {
+        const project = fixture(directory);
+        const settings = { blockMerge: true, failTagPush: true };
+        const services = fakeServices(project, settings);
+        const dependencies = { cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+            now: services.now, sleep: services.sleep, log: () => {} };
+        await assert.rejects(release.release('patch', dependencies), /Timed out waiting for release PR/u);
+        assert.equal(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), '');
+        settings.blockMerge = false;
+        await assert.rejects(release.release('patch', dependencies), /tag rejected/u);
+        settings.failTagPush = false;
+        await release.release('patch', dependencies);
+        assert.equal(services.calls.filter((c) => c[0] === 'gh' && c[1] === 'pr' && c[2] === 'create').length, 1);
+        assert.equal(services.calls.filter((c) => c[0] === 'npm' && c[1] === 'version').length, 1);
+        assert.equal(services.calls.some((c) => c[0] === 'git' && c[1] === 'push' && c[3]?.endsWith(':refs/heads/main')), false);
+        assert.equal(project.git('worktree', 'list', '--porcelain').split('worktree ').length, 2);
+    });
+});
+
+test('resume after tag publication reuses the tag and targets the merge commit despite later main commits', async () => {
+    await withTemporaryRepositoryAsync(async (directory) => {
+        const project = fixture(directory);
+        const settings = { failJob: true, advanceMain: true };
+        const services = fakeServices(project, settings);
+        const dependencies = { cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+            now: services.now, sleep: services.sleep, log: () => {} };
+        await assert.rejects(release.release('patch', dependencies), /ended as failure/u);
+        const tag = project.git('rev-parse', 'refs/tags/v1.3.6');
+        assert.notEqual(tag, project.git('rev-parse', 'origin/main'));
+        assert.equal(tag, project.git('rev-parse', 'origin/main^'));
+        settings.failJob = false;
+        await release.release('patch', dependencies);
+        assert.equal(services.calls.filter((c) => c[0] === 'git' && c[1] === 'push' && c[3] === 'refs/tags/v1.3.6').length, 1);
+        assert.equal(services.calls.filter((c) => c[0] === 'npm' && c[1] === 'version').length, 1);
+    });
+});
+test('resume refuses a conflicting local tag and preserves it', async () => {
+    await withTemporaryRepositoryAsync(async (directory) => {
+        const project = fixture(directory);
+        const settings = { blockMerge: true };
+        const services = fakeServices(project, settings);
+        const dependencies = { cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+            now: services.now, sleep: services.sleep, log: () => {} };
+        await assert.rejects(release.release('patch', dependencies), /Timed out/u);
+        project.git('tag', 'v1.3.6');
+        settings.blockMerge = false;
+        await assert.rejects(release.release('patch', dependencies), /Local tag .* points to another commit/u);
+        assert.equal(project.git('rev-parse', 'v1.3.6'), project.git('rev-parse', 'HEAD'));
+        assert.equal(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), '');
     });
 });

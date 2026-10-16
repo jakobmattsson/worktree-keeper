@@ -1,0 +1,15 @@
+{
+  "git": {
+    "remote": "origin",
+    "defaultBranch": "main",
+    "branchPrefix": "codex/"
+  },
+  "tests": {
+    "commands": [
+      "node --test tests/scripts/*.test.js"
+    ],
+    "receiptMaxAgeMinutes": 60,
+    "npmTestUsesRunner": true
+  },
+  "loggingDirectory": "tmp/logs"
+}

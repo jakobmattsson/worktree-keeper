@@ -19,8 +19,10 @@
     "scripts/"
   ],
   "scripts": {
-    "test": "node --test tests/scripts/*.test.js",
-    "release": "node bin/worktree-keeper.js release"
+    "test": "node bin/worktree-keeper.js run-tests",
+    "release": "node bin/worktree-keeper.js release",
+    "cleanup:branches": "node bin/worktree-keeper.js cleanup-merged-branches",
+    "cleanup:empty-directories": "node bin/worktree-keeper.js remove-empty-directories"
   },
   "engines": {
     "node": ">=20"
