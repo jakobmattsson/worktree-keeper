@@ -209,40 +209,20 @@ function prepare(exec, cwd, bump, log) {
         throw new ReleaseError(`Release must run from its repository root (${gitRoot}).`);
     }
     ensureClean(exec, cwd);
-    const initialPackage = readPackage(cwd);
-    ensureLockfilesMatch(cwd, initialPackage.version);
-    inspectWorkflow(cwd, `v${nextVersion(initialPackage.version, bump)}`);
     const remote = checked(exec, 'git', ['remote', 'get-url', 'origin'], cwd);
     const { host, slug } = originRepository(remote);
-    const defaultBranch = github(exec, cwd, host, `repos/${slug}`, {}).default_branch;
+    const repository = github(exec, cwd, host, `repos/${slug}`, {});
+    if (repository.allow_squash_merge === false)
+        throw new ReleaseError('Release PRs require squash merging to be enabled.');
+    const defaultBranch = repository.default_branch;
     if (typeof defaultBranch !== 'string' || !defaultBranch) {
         throw new ReleaseError('GitHub did not provide the default branch.');
     }
     checked(exec, 'git', ['fetch', 'origin', defaultBranch], cwd);
-    const currentBranch = checked(exec, 'git', ['branch', '--show-current'], cwd);
-    if (currentBranch !== defaultBranch) {
-        log(`Switching to default branch ${defaultBranch}.`);
-        const existing = exec('git', ['show-ref', '--verify', '--quiet', `refs/heads/${defaultBranch}`], { cwd });
-        if (existing.status === 0)
-            checked(exec, 'git', ['switch', defaultBranch], cwd);
-        else if (existing.status === 1) {
-            checked(exec, 'git', ['switch', '--track', '-c', defaultBranch, `origin/${defaultBranch}`], cwd);
-        }
-        else {
-            throw new ReleaseError(`Could not check local branch ${defaultBranch}: ${existing.stderr.trim()}`);
-        }
-    }
-    const local = checked(exec, 'git', ['rev-parse', 'HEAD'], cwd);
-    const origin = checked(exec, 'git', ['rev-parse', `refs/remotes/origin/${defaultBranch}`], cwd);
-    if (local !== origin) {
-        throw new ReleaseError(`Local ${defaultBranch} (${local}) differs from origin/${defaultBranch} (${origin}).`);
-    }
-    ensureClean(exec, cwd);
-    const packageInfo = readPackage(cwd);
-    ensureLockfilesMatch(cwd, packageInfo.version);
+    const manifest = JSON.parse(checkedOutput(exec, 'git', ['show', `origin/${defaultBranch}:package.json`], cwd));
+    const packageInfo = { name: manifest.name, version: manifest.version };
     const version = nextVersion(packageInfo.version, bump);
     const tag = `v${version}`;
-    const workflow = inspectWorkflow(cwd, tag);
     const localTag = exec('git', ['show-ref', '--verify', '--quiet', `refs/tags/${tag}`], { cwd });
     if (localTag.status === 0)
         throw new ReleaseError(`Local tag ${tag} already exists.`);
@@ -254,7 +234,7 @@ function prepare(exec, cwd, bump, log) {
     if (remoteTag.status !== 2)
         throw new ReleaseError(`Could not check origin tag ${tag}: ${remoteTag.stderr.trim()}`);
     log(`Validated ${packageInfo.name}: ${packageInfo.version} -> ${version} on ${defaultBranch}.`);
-    return { host, slug, defaultBranch, name: packageInfo.name, version, tag, workflow };
+    return { host, slug, defaultBranch, name: packageInfo.name, version, tag };
 }
 function makeVersionCommit(exec, cwd, bump, version) {
     checked(exec, 'npm', ['version', bump, '--no-git-tag-version', '--ignore-scripts'], cwd);
@@ -355,21 +335,159 @@ async function waitForRegistry(exec, cwd, details, workflow, now, sleep, log) {
         fs.rmSync(cache, { recursive: true, force: true });
     }
 }
+function saveState(filename, state) {
+    fs.writeFileSync(`${filename}.tmp`, JSON.stringify(state));
+    fs.renameSync(`${filename}.tmp`, filename);
+}
+function pullRequest(exec, cwd, details) {
+    return github(exec, cwd, details.host, `repos/${details.slug}/pulls/${details.pr}`, {});
+}
+async function mergeRelease(exec, cwd, details, now, sleep, log) {
+    const deadline = now() + workflowTimeoutMs;
+    while (now() < deadline) {
+        const pr = pullRequest(exec, cwd, details);
+        if (pr.head.sha !== details.sha || pr.base.ref !== details.defaultBranch)
+            throw new ReleaseError('Release PR changed unexpectedly; inspect it before continuing.');
+        if (pr.merged)
+            return pr.merge_commit_sha;
+        if (pr.state !== 'open')
+            throw new ReleaseError(`Release PR #${details.pr} was closed without merging.`);
+        if (pr.mergeable_state === 'dirty')
+            throw new ReleaseError(`Release PR #${details.pr} has conflicts; inspect it before continuing.`);
+        // GitHub enforces required checks, reviews, and branch freshness on this request.
+        const result = exec('gh', ['api', '--hostname', details.host, '--method', 'PUT',
+            `repos/${details.slug}/pulls/${details.pr}/merge`,
+            '-f', 'merge_method=squash', '-f', `sha=${details.sha}`], { cwd });
+        if (result.status === 0) {
+            const merged = JSON.parse(result.stdout);
+            if (merged.merged)
+                return merged.sha;
+        }
+        else if (!/HTTP (405|409)/u.test(result.stderr)) {
+            throw new ReleaseError(`Cannot merge release PR: ${result.stderr.trim()}`);
+        }
+        log(`Waiting for release PR #${details.pr} to satisfy merge requirements.`);
+        await sleep(pollIntervalMs);
+    }
+    throw new ReleaseError(`Timed out waiting for release PR #${details.pr}; retry the same release command to continue.`);
+}
 async function release(bump, dependencies) {
     const { cwd, spawnSync, environment, now, sleep, log } = dependencies;
     const exec = (command, args, options) => execute(spawnSync, environment, command, args, options);
-    const details = prepare(exec, cwd, bump, log);
-    const sha = makeVersionCommit(exec, cwd, bump, details.version);
-    log(`Created version commit ${sha} (${details.version}).`);
-    checked(exec, 'git', ['push', 'origin', `HEAD:refs/heads/${details.defaultBranch}`], cwd);
-    log(`Pushed ${sha} to origin/${details.defaultBranch}.`);
-    checked(exec, 'git', ['tag', details.tag, sha], cwd);
-    log(`Created local tag ${details.tag}.`);
-    checked(exec, 'git', ['push', 'origin', `refs/tags/${details.tag}`], cwd);
-    log(`Pushed tag ${details.tag}.`);
-    const workflow = await waitForWorkflow(exec, cwd, details, sha, now, sleep, log);
-    const elapsedMs = await waitForRegistry(exec, cwd, details, workflow, now, sleep, log);
-    log(`Published ${details.name}@${details.version}; visible on npm ${(elapsedMs / 1000).toFixed(1)} seconds after the workflow run completed.`);
+    const common = path.resolve(cwd, checked(exec, 'git', ['rev-parse', '--git-common-dir'], cwd));
+    const statePath = path.join(common, 'worktree-keeper-release.json');
+    const lockPath = `${statePath}.lock`;
+    if (fs.existsSync(lockPath)) {
+        const pid = Number(fs.readFileSync(lockPath, 'utf8'));
+        try {
+            process.kill(pid, 0);
+            throw new ReleaseError('Another release command is running.');
+        }
+        catch (error) {
+            if (error.code !== 'ESRCH') throw error;
+            fs.unlinkSync(lockPath);
+        }
+    }
+    const lock = fs.openSync(lockPath, 'wx');
+    fs.writeFileSync(lock, String(process.pid));
+    fs.closeSync(lock);
+    let temporary;
+    let worktree;
+    try {
+        let details;
+        if (fs.existsSync(statePath)) {
+            details = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+            if (details.bump !== bump)
+                throw new ReleaseError(`An unfinished ${details.bump} release exists; retry that release type.`);
+            const origin = originRepository(checked(exec, 'git', ['remote', 'get-url', 'origin'], cwd));
+            if (origin.host !== details.host || origin.slug !== details.slug)
+                throw new ReleaseError('Origin differs from the unfinished release repository.');
+            log(`Resuming release ${details.tag}.`);
+        }
+        else {
+            details = prepare(exec, cwd, bump, log);
+            for (let page = 1; ; page += 1) {
+                const open = github(exec, cwd, details.host, `repos/${details.slug}/pulls`, {
+                    state: 'open', base: details.defaultBranch, per_page: '100', page: String(page),
+                });
+                if (open.some((pr) => pr.head.ref.startsWith('release/v')))
+                    throw new ReleaseError('An open release PR already exists; finish it from its original checkout.');
+                if (open.length < 100) break;
+            }
+            details.bump = bump;
+            details.branch = `release/${details.tag}`;
+            saveState(statePath, details);
+        }
+        temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'worktree-keeper-release-worktree-'));
+        worktree = path.join(temporary, 'repo');
+        if (!details.sha) {
+            checked(exec, 'git', ['worktree', 'add', '--detach', worktree, `origin/${details.defaultBranch}`], cwd);
+            const baseline = readPackage(worktree);
+            if (baseline.name !== details.name || nextVersion(baseline.version, bump) !== details.version)
+                throw new ReleaseError('Default branch version changed before release preparation completed; inspect release state.');
+            ensureLockfilesMatch(worktree, baseline.version);
+            inspectWorkflow(worktree, details.tag);
+            details.sha = makeVersionCommit(exec, worktree, bump, details.version);
+            // Keep the commit reachable if interrupted before the remote push.
+            checked(exec, 'git', ['update-ref', `refs/worktree-keeper/releases/${details.tag}`, details.sha], cwd);
+            saveState(statePath, details);
+        }
+        else {
+            checked(exec, 'git', ['worktree', 'add', '--detach', worktree, details.sha], cwd);
+        }
+        if (!details.pr) {
+            checked(exec, 'git', ['push', 'origin', `${details.sha}:refs/heads/${details.branch}`], cwd);
+            const existing = github(exec, cwd, details.host, `repos/${details.slug}/pulls`, {
+                state: 'all', head: `${details.slug.split('/')[0]}:${details.branch}`, base: details.defaultBranch,
+            });
+            if (existing.length > 1)
+                throw new ReleaseError('Multiple release PRs found; inspect before continuing.');
+            if (existing.length) details.pr = existing[0].number;
+            else {
+                const body = path.join(temporary, 'pr-body.md');
+                fs.writeFileSync(body, `Bump ${details.name} to ${details.version}. After merge, the release command tags the merge commit and waits for npm publication.\n`);
+                checked(exec, 'gh', ['pr', 'create', '--repo', `${details.host}/${details.slug}`,
+                    '--base', details.defaultBranch, '--head', details.branch,
+                    '--title', `Release ${details.tag}`, '--body-file', body], cwd);
+                const created = github(exec, cwd, details.host, `repos/${details.slug}/pulls`, {
+                    state: 'all', head: `${details.slug.split('/')[0]}:${details.branch}`, base: details.defaultBranch,
+                });
+                if (created.length !== 1) throw new ReleaseError('Cannot identify created release PR.');
+                details.pr = created[0].number;
+            }
+            saveState(statePath, details);
+        }
+        log(`Release PR: https://${details.host}/${details.slug}/pull/${details.pr}`);
+        const sha = await mergeRelease(exec, cwd, details, now, sleep, log);
+        checked(exec, 'git', ['fetch', 'origin', details.defaultBranch], cwd);
+        checked(exec, 'git', ['merge-base', '--is-ancestor', sha, `origin/${details.defaultBranch}`], cwd);
+        checked(exec, 'git', ['checkout', '--detach', sha], worktree);
+        const manifest = readPackage(worktree);
+        if (manifest.version !== details.version || manifest.name !== details.name)
+            throw new ReleaseError('Merged package does not match the intended release.');
+        ensureLockfilesMatch(worktree, details.version);
+        details.workflow = inspectWorkflow(worktree, details.tag);
+        const remote = checked(exec, 'git', ['ls-remote', '--tags', 'origin', `refs/tags/${details.tag}`, `refs/tags/${details.tag}^{}`], cwd);
+        if (remote && !remote.split('\n').some((line) => line.startsWith(`${sha}\t`)))
+            throw new ReleaseError(`Origin tag ${details.tag} points to another commit.`);
+        if (!remote) {
+            const local = exec('git', ['rev-parse', '--verify', `refs/tags/${details.tag}^{commit}`], { cwd });
+            if (local.status === 0 && local.stdout.trim() !== sha)
+                throw new ReleaseError(`Local tag ${details.tag} points to another commit.`);
+            if (local.status !== 0) checked(exec, 'git', ['tag', details.tag, sha], cwd);
+            checked(exec, 'git', ['push', 'origin', `refs/tags/${details.tag}`], cwd);
+        }
+        const workflow = await waitForWorkflow(exec, cwd, details, sha, now, sleep, log);
+        const elapsedMs = await waitForRegistry(exec, cwd, details, workflow, now, sleep, log);
+        log(`Published ${details.name}@${details.version}; visible on npm ${(elapsedMs / 1000).toFixed(1)} seconds after the workflow run completed.`);
+        fs.unlinkSync(statePath);
+        checked(exec, 'git', ['update-ref', '-d', `refs/worktree-keeper/releases/${details.tag}`], cwd);
+    }
+    finally {
+        if (worktree) exec('git', ['worktree', 'remove', '--force', worktree], { cwd });
+        if (temporary) fs.rmSync(temporary, { recursive: true, force: true });
+        fs.unlinkSync(lockPath);
+    }
 }
 function usageCommand() {
     return 'worktree-keeper release';
