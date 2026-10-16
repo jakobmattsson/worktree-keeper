@@ -198,6 +198,12 @@ GitHub Actions workflow, with direct publishing enabled. The workflow runs tests
 and a package dry run, verifies that the tag matches both package versions, and
 publishes via OIDC. It needs no npm access token.
 
+This single workflow runs on pull requests, pushes to `main`, and `v*` tags.
+The `test` check runs the test suite on Node.js 20; `Test package` checks the
+package contents on Node.js 22. Both checks must pass before a tag can publish.
+Only tag pushes run the publish job. Keep the `package.yml` filename unchanged:
+npm trusted publishing is configured for that workflow file.
+
 From a clean repository root, run `npm run release -- patch`, `minor`, or `major`.
 The command fetches the default branch and uses a temporary detached worktree to
 increment the package and lockfile versions. Your current branch and local default

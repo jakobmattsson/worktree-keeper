@@ -17,8 +17,21 @@ permissions:
 
 jobs:
   test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package:
     name: Test package
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,13 +39,12 @@ jobs:
           node-version: '22.14.0'
           cache: npm
       - run: npm ci
-      - run: npm test
       - run: npm pack --dry-run --json
 
   publish:
     name: Publish to npm
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-    needs: test
+    needs: [test, package]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
