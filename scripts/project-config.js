@@ -31,7 +31,7 @@ function requireNonemptyString(value, location, file) {
 
 function validateConfig(config, file) {
   requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
-  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes']);
+  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 
   for (const field of ['remote', 'defaultBranch', 'branchPrefix']) {
@@ -45,6 +45,10 @@ function validateConfig(config, file) {
         || new Set(remotes).size !== remotes.length) {
       throw new Error(`${file}: git.checkpointPushRemotes must be an array of unique remote names`);
     }
+  }
+  if (Object.hasOwn(config.git, 'releaseMergeMethod')
+      && !['merge', 'squash', 'rebase'].includes(config.git.releaseMergeMethod)) {
+    throw new Error(`${file}: git.releaseMergeMethod must be merge, squash, or rebase`);
   }
   requireNonemptyString(config.loggingDirectory, 'loggingDirectory', file);
   if (!Array.isArray(config.tests.commands) || config.tests.commands.length === 0

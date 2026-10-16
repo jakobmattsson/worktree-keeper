@@ -57,3 +57,15 @@ test('project config accepts optional checkpoint remotes and rejects invalid lis
     assert.throws(() => projectConfig(root), /git.checkpointPushRemotes must be an array of unique remote names/);
   }
 });
+
+test('project config validates the optional release merge preference', (t) => {
+  const root = createRepository(t);
+  for (const method of ['merge', 'squash', 'rebase']) {
+    writeProjectConfig(root, { git: { releaseMergeMethod: method } });
+    assert.equal(projectConfig(root).git.releaseMergeMethod, method);
+  }
+  for (const method of [null, '', 'merge-commit', true]) {
+    writeProjectConfig(root, { git: { releaseMergeMethod: method } });
+    assert.throws(() => projectConfig(root), /git.releaseMergeMethod must be merge, squash, or rebase/);
+  }
+});
