@@ -96,7 +96,22 @@ The commands resolve the package from the current Git worktree. Install dependen
 
 From the caller's Git worktree, run `npm test` for the configured commands, `npm test -- rerun` to bypass a reusable receipt, `npm run cleanup:branches` to preview merged branch cleanup, and `npm run cleanup:empty-directories` to preview removal of directories containing only ignored files. Add `-- --execute` to either cleanup package script to apply it. Run `npm exec --no -- worktree-keeper --help` for the complete command list. To create a manual checkpoint, use `npm exec --no -- worktree-keeper checkpoint-codex-changes --subject "<subject>" --body "<body paragraph>"`.
 
-Run `npm test` in this repository to verify the shared package itself.
+This repository uses the same hooks and configuration, with commands pointing to
+its own `bin/worktree-keeper.js` instead of an installed copy. There is no dependency
+on a published version of itself. `npm exec --no -- worktree-keeper` also resolves
+the root package's own bin, including the checkpoint command requested by the
+Stop hook. Install dependencies with `npm ci` to run the full test suite.
+
+Run `npm test` in this repository to verify the shared package itself, or
+`npm test -- rerun` to force a fresh run. Its configured test command runs Node's
+test runner directly, avoiding recursion through `npm test`. The cleanup package
+scripts work the same way as in calling projects.
+
+When first adopting these hooks, make sure the primary checkout also contains
+`worktree-keeper.config.json` before trusting them with `/hooks`: invocation logs
+are stored there and session cleanup reads that checkout's configuration.
+The hook definitions can then be reviewed and trusted in Codex; committing them
+does not grant trust automatically.
 
 ## Publish an npm release
 

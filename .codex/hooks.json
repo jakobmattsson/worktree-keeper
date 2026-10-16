@@ -1,0 +1,29 @@
+{
+  "description": "Repository lifecycle hooks.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/worktree-keeper.js\" checkpoint-codex-stop",
+            "timeout": 30,
+            "statusMessage": "Checking for an uncommitted Codex checkpoint"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/worktree-keeper.js\" cleanup-ended-session",
+            "timeout": 3,
+            "statusMessage": "Scheduling merged branch cleanup"
+          }
+        ]
+      }
+    ]
+  }
+}
