@@ -146,15 +146,17 @@ function createRunner(t, source) {
   fs.writeFileSync(path.join(root, 'test.cjs'), source);
   git(root, 'add', '.');
   git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Base');
+  function invoke(command, ...args) {
+    const env = { ...process.env, CI: '' };
+    delete env.NODE_TEST_CONTEXT;
+    return spawnSync(process.execPath, [path.resolve(__dirname, '../../bin/worktree-keeper.js'), command, ...args], {
+      cwd: root, env, encoding: 'utf8',
+    });
+  }
   return {
     root,
-    run(...args) {
-      const env = { ...process.env, CI: '' };
-      delete env.NODE_TEST_CONTEXT;
-      return spawnSync(process.execPath, [path.resolve(__dirname, '../../bin/worktree-keeper.js'), 'run-tests', ...args], {
-        cwd: root, env, encoding: 'utf8',
-      });
-    },
+    run: (...args) => invoke('run-tests', ...args),
+    checkReceipt: () => invoke('check-test-receipt').status === 0,
   };
 }
 
@@ -166,17 +168,17 @@ test('a failed forced run invalidates the previous passing receipt', async (t) =
       if (fs.existsSync('.git/fail')) process.exit(1);
     `);
     assert.equal(runner.run().status, 0);
-    assert.equal(checkReceipt(runner.root), true);
+    assert.equal(runner.checkReceipt(), true);
     fs.writeFileSync(path.join(runner.root, '.git/fail'), 'fail');
 
     assert.equal(runner.run(force).status, 1);
-    assert.equal(checkReceipt(runner.root), false);
+    assert.equal(runner.checkReceipt(), false);
     assert.equal(runner.run().status, 1);
     assert.equal(fs.readFileSync(path.join(runner.root, '.git/executions'), 'utf8'), 'xxx');
 
     fs.rmSync(path.join(runner.root, '.git/fail'));
     assert.equal(runner.run().status, 0);
-    assert.equal(checkReceipt(runner.root), true);
+    assert.equal(runner.checkReceipt(), true);
     assert.match(runner.run().stdout, /Tests already passed/);
     assert.equal(fs.readFileSync(path.join(runner.root, '.git/executions'), 'utf8'), 'xxxx');
   });
@@ -189,7 +191,7 @@ test('a passing command cannot certify files modified while tests run', (t) => {
     if (fs.existsSync('.git/change-during-run')) fs.writeFileSync('code.txt', 'untested');
   `);
   assert.equal(runner.run().status, 0);
-  assert.equal(checkReceipt(runner.root), true);
+  assert.equal(runner.checkReceipt(), true);
   fs.writeFileSync(path.join(runner.root, '.git/change-during-run'), 'change');
 
   const result = runner.run('--force');
@@ -197,6 +199,6 @@ test('a passing command cannot certify files modified while tests run', (t) => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /changed while tests ran/);
   assert.equal(fs.readFileSync(path.join(runner.root, 'code.txt'), 'utf8'), 'untested');
-  assert.equal(checkReceipt(runner.root), false);
+  assert.equal(runner.checkReceipt(), false);
   assert.equal(runner.run().status, 1);
 });
