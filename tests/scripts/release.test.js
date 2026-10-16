@@ -53,6 +53,7 @@ function fixture(directory) {
     }));
     const condition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
     writeWorkflow(repo, condition, 'npm publish', 'v*');
+    require('./project-config-fixture').writeProjectConfig(repo, { git: { releaseRequiredChecks: ['test'] } });
     git('add', '.');
     git('commit', '-m', 'initial');
     git('push', '-u', 'origin', 'main');
@@ -89,6 +90,11 @@ function fakeServices(testFixture, settings) {
                 response = { default_branch: 'main', allow_merge_commit: true, allow_rebase_merge: true,
                     allow_squash_merge: true, ...settings.repository };
             }
+            else if (endpoint.endsWith('/branches/main/protection')) {
+                if (settings.policyError) return { status: 1, stderr: settings.policyError };
+                response = { enforce_admins: { enabled: true }, required_status_checks: { strict: !settings.loosePolicy, contexts: ['test'] } };
+            }
+            else if (endpoint.includes('/rules/branches/main?')) response = [];
             else if (endpoint === 'repos/owner/repo/pulls') response = pr ? [pr] : [];
             else if (endpoint.endsWith('/pulls/7/merge')) {
                 if (settings.blockMerge) return { status: 1, stderr: 'HTTP 405: required checks pending' };
@@ -534,7 +540,7 @@ for (const scenario of [
             const project = fixture(directory);
             if (scenario.preference !== undefined) {
                 require('./project-config-fixture').writeProjectConfig(project.repo, {
-                    git: { releaseMergeMethod: scenario.preference },
+                    git: { releaseMergeMethod: scenario.preference, releaseRequiredChecks: ['test'] },
                 });
                 project.git('add', '.');
                 project.git('commit', '-m', 'Configure caller merge preference');
@@ -588,3 +594,40 @@ for (const legacy of [false, true]) {
         });
     });
 }
+
+for (const [name, settings, message] of [
+    ['loose branch policy', { loosePolicy: true }, /strict status checks/],
+    ['unreadable branch policy', { policyError: 'HTTP 403: Forbidden' }, /Administration read.*rerun/],
+]) {
+    test(`release stops before creating a PR with ${name}`, async () => {
+        await withTemporaryRepositoryAsync(async directory => {
+            const project = fixture(directory);
+            const services = fakeServices(project, settings);
+            await assert.rejects(release.release('patch', {
+                cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+                now: services.now, sleep: services.sleep, log: () => {},
+            }), message);
+            assert.equal(services.calls.some(call => call[0] === 'gh' && call[1] === 'pr'), false);
+            assert.equal(services.calls.some(call => call[0] === 'git' && call[1] === 'push'), false);
+        });
+    });
+}
+
+test('release rechecks policy before merge and stops if it changed after preflight', async () => {
+    await withTemporaryRepositoryAsync(async directory => {
+        const project = fixture(directory);
+        const settings = {};
+        const services = fakeServices(project, settings);
+        const spawn = (command, args, options) => {
+            const result = services.spawnSync(command, args, options);
+            if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') settings.loosePolicy = true;
+            return result;
+        };
+        await assert.rejects(release.release('patch', {
+            cwd: project.repo, spawnSync: spawn, environment: {},
+            now: services.now, sleep: services.sleep, log: () => {},
+        }), /strict status checks/);
+        assert.equal(services.calls.some(call => call.includes('repos/owner/repo/pulls/7/merge')), false);
+        assert.equal(project.git('ls-remote', '--tags', 'origin'), '');
+    });
+});

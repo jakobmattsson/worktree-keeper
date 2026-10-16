@@ -25,17 +25,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test
-      - name: Record tested contents
+      - name: Verify strict release checks
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: node -e 'const fs = require("node:fs"); const tree = require("node:child_process").execFileSync("git", ["rev-parse", "HEAD^{tree}"], {encoding:"utf8"}).trim(); fs.writeFileSync("tested-tree.json", JSON.stringify({pullRequest:Number(process.env.PR_NUMBER), head:process.env.PR_HEAD, tree}));'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tested-tree-${{ github.run_attempt }}
-          path: tested-tree.json
-          retention-days: 90
+          GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
+        run: node bin/worktree-keeper.js verify-release-protection
+      - run: npm test
 
   package:
     if: ${{ github.event_name == 'pull_request' }}
@@ -68,15 +62,10 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - run: npm ci
-      - name: Verify tested release PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const verify = require('./.github/scripts/verify-release.cjs');
-            await verify({ github, context });
-      - name: Verify release version
+      - name: Verify release
         env:
+          GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: node bin/worktree-keeper.js verify-release-version
+        run: node bin/worktree-keeper.js verify-release
       - run: npm install --global npm@11.21.0
       - run: npm publish

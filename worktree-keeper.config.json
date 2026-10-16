@@ -3,7 +3,8 @@
     "remote": "origin",
     "defaultBranch": "main",
     "branchPrefix": "codex/",
-    "checkpointPushRemotes": ["origin"]
+    "checkpointPushRemotes": ["origin"],
+    "releaseRequiredChecks": ["test", "Test package"]
   },
   "tests": {
     "commands": [

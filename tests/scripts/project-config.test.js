@@ -69,3 +69,13 @@ test('project config validates the optional release merge preference', (t) => {
     assert.throws(() => projectConfig(root), /git.releaseMergeMethod must be merge, squash, or rebase/);
   }
 });
+
+test('project config validates required release check names', (t) => {
+  const root = createRepository(t);
+  writeProjectConfig(root, { git: { releaseRequiredChecks: ['test', 'Test package'] } });
+  assert.deepEqual(projectConfig(root).git.releaseRequiredChecks, ['test', 'Test package']);
+  for (const checks of [[], null, 'test', [''], [' test'], [1], ['test', 'test']]) {
+    writeProjectConfig(root, { git: { releaseRequiredChecks: checks } });
+    assert.throws(() => projectConfig(root), /releaseRequiredChecks must be a nonempty array of unique check names/);
+  }
+});

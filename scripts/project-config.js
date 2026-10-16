@@ -31,7 +31,7 @@ function requireNonemptyString(value, location, file) {
 
 function validateConfig(config, file) {
   requireExactKeys(config, ['git', 'tests', 'loggingDirectory'], 'config', file);
-  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod']);
+  requireExactKeys(config.git, ['remote', 'defaultBranch', 'branchPrefix'], 'git', file, ['checkpointPushRemotes', 'releaseMergeMethod', 'releaseRequiredChecks']);
   requireExactKeys(config.tests, ['commands', 'receiptMaxAgeMinutes', 'npmTestUsesRunner'], 'tests', file);
 
   for (const field of ['remote', 'defaultBranch', 'branchPrefix']) {
@@ -44,6 +44,12 @@ function validateConfig(config, file) {
           || remote !== remote.trim() || remote.startsWith('-'))
         || new Set(remotes).size !== remotes.length) {
       throw new Error(`${file}: git.checkpointPushRemotes must be an array of unique remote names`);
+    }
+  }
+  if (Object.hasOwn(config.git, 'releaseRequiredChecks')) {
+    const checks = config.git.releaseRequiredChecks;
+    if (!Array.isArray(checks) || !checks.length || checks.some(check => typeof check !== 'string' || !check.trim() || check !== check.trim()) || new Set(checks).size !== checks.length) {
+      throw new Error(`${file}: git.releaseRequiredChecks must be a nonempty array of unique check names`);
     }
   }
   if (Object.hasOwn(config.git, 'releaseMergeMethod')

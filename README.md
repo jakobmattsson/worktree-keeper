@@ -32,7 +32,7 @@ Run `npm install` from the project root and commit the resulting `package-lock.j
 
 ### 2. `worktree-keeper.config.json`
 
-Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes` and `git.releaseMergeMethod` are optional fields described below. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
+Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes`, `git.releaseMergeMethod`, and `git.releaseRequiredChecks` are optional fields described below; release commands require `git.releaseRequiredChecks`. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
 
 ```json
 {
@@ -215,15 +215,42 @@ This workflow runs on pull requests and `v*` tags; merging to `main` does not
 start another run. PRs run `test` on Node.js 20 and `Test package` on Node.js 22.
 Tag pushes only verify and publish, without repeating those checks.
 
-Before publishing, the workflow requires the tag to point to the merge commit
-of a same-repository `release/v<version>` PR into `main`. Its latest CI run must
-have passed both required checks. The tagged Git tree must match the tree
-recorded by that run, including when GitHub used a temporary merge commit for
-testing. Test evidence is retained for 90 days; missing or expired evidence
-requires rerunning the release PR's CI before publishing. Manual tags without
-this evidence are rejected. Version checks still require matching package and
-lockfile versions. Keep the `package.yml` filename unchanged: npm trusted
-publishing is configured for that workflow file.
+Release verification uses GitHub's enforced branch policy instead of retaining
+artifacts of tested contents. Configure `git.releaseRequiredChecks` in the root
+`worktree-keeper.config.json` with the exact CI job names required for a release
+(for this repository: `["test", "Test package"]`). These checks must be mandatory
+with **Require branches to be up to date before merging** enabled. Classic branch
+protection must enforce checks for administrators too. Alternatively, active
+rulesets must require strict checks and have no bypass actors. Rules inherited
+from the organization are included. Merge queues are not currently an alternative
+to this strict policy.
+
+The PR test job runs `worktree-keeper verify-release-protection` before its tests.
+The command checks `GITHUB_BASE_REF`, or `git.defaultBranch` outside PR CI.
+`worktree-keeper release` checks the default branch before preparing a release
+and again immediately before each merge attempt. Before publishing,
+`worktree-keeper verify-release` checks the policy, matching package/tag/lockfile
+versions, a same-repository merged `release/v<version>` PR, and successful required
+jobs in its latest PR workflow run. Manual tags without that PR are rejected.
+`verify-release-version` remains available for local version checks alone.
+
+API failures, missing permissions, and unverifiable rules stop the commands.
+The workflow expects a `RELEASE_POLICY_TOKEN` Actions secret, exposed to the
+commands as `GH_TOKEN`. Use a fine-grained PAT or GitHub App token with access to
+this repository and Administration read, Contents read, Pull requests read and
+Actions read permissions. GitHub only exposes ruleset bypass actors to callers
+with write access to the ruleset; ruleset users must additionally grant that
+access (Administration write for repository rulesets, or the appropriate access
+for inherited organization rulesets). Missing bypass information also fails.
+The normal workflow `GITHUB_TOKEN` cannot be granted Administration permissions
+through workflow YAML. After correcting access or rules, rerun the failed job.
+Fork PRs do not receive this secret and fail the policy check; do not expose it
+by executing fork code with `pull_request_target`.
+
+This policy trusts GitHub to enforce the checked settings when merging. It does
+not retain historical proof of the tested file tree if administrators change
+settings between CI and merge. Keep the `package.yml` filename unchanged: npm
+trusted publishing is configured for that workflow file.
 
 Release merge selection reads the calling repository's root
 `worktree-keeper.config.json`, not the installed package's configuration:
@@ -235,7 +262,7 @@ Release merge selection reads the calling repository's root
 - Without a preference, merge commit is chosen first, then rebase.
 
 For example, add `"releaseMergeMethod": "rebase"` inside the existing `git` object.
-A release-only caller without a configuration file uses the same defaults.
+A caller without a merge preference uses the same defaults.
 The chosen method is saved with release state and reused on retries; unfinished
 releases created by older versions retain their original squash behavior.
 
@@ -253,9 +280,9 @@ After merge, the command verifies the package files at the PR's actual merge
 commit, tags that commit with `v<version>`, and pushes the tag. The existing
 workflow publishes through npm trusted publishing. The command then waits for
 the publish job and for the version to appear on npm. Git and an authenticated
-GitHub CLI (`gh`) with Contents read/write, Pull requests read/write, and Actions
-read access are required. Registry checks use a temporary npm cache and request
-current metadata.
+GitHub CLI (`gh`) with Contents read/write, Pull requests read/write, Actions
+read and the policy-reading access described above are required. Registry checks
+use a temporary npm cache and request current metadata.
 
 Retry the same command and release type after an interruption: release state is
 stored in `worktree-keeper-release.json` in the shared Git directory, so retries
@@ -275,9 +302,12 @@ that needs manual cleanup.
 
 Other npm projects can use this command through a package script such as
 `"release": "worktree-keeper release"`. The project must use a root package
-with a stable version and the supported tag-triggered GitHub Actions publish
-job. This repository’s PR-evidence policy is local to its workflow; callers
-using it must also copy `.github/scripts/verify-release.cjs` and the evidence
-upload step, or supply their own publication checks. The `publish` job
-must use its exact tag condition and contain a step whose command is exactly
-`npm publish`. Workspaces are not supported.
+with a stable version, a `worktree-keeper.config.json` with
+`git.releaseRequiredChecks`, and the supported tag-triggered GitHub Actions
+publish job. Add `worktree-keeper verify-release-protection` to a required PR
+test job and `worktree-keeper verify-release` before publishing, with `GH_TOKEN`
+and `RELEASE_TAG` set for release verification. Both commands are shipped with
+the package; no verifier script or artifact upload needs to be copied.
+All configured check names must be jobs in the publish workflow's PR run.
+The `publish` job must use its exact tag condition and contain a step whose
+command is exactly `npm publish`. Workspaces are not supported.
