@@ -86,7 +86,8 @@ function fakeServices(testFixture, settings) {
             const endpoint = args[5];
             let response;
             if (endpoint === 'repos/owner/repo') {
-                response = { default_branch: 'main' };
+                response = { default_branch: 'main', allow_merge_commit: true, allow_rebase_merge: true,
+                    allow_squash_merge: true, ...settings.repository };
             }
             else if (endpoint === 'repos/owner/repo/pulls') response = pr ? [pr] : [];
             else if (endpoint.endsWith('/pulls/7/merge')) {
@@ -425,7 +426,7 @@ test('a failed tag push stops before workflow polling', async () => {
         assert.equal(services.calls.some((call) => call[0] === 'gh' && call[6]?.includes('/actions/')), false);
     });
 });
-test('CLI merges a release PR and tags the squash commit before waiting for npm visibility', async () => {
+test('CLI merges a release PR and tags the resulting commit before waiting for npm visibility', async () => {
     await withTemporaryRepositoryAsync(async (directory) => {
         const project = fixture(directory);
         const services = fakeServices(project, { failBranchPush: false, failJob: false });
@@ -515,3 +516,75 @@ test('resume refuses a conflicting local tag and preserves it', async () => {
         assert.equal(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), '');
     });
 });
+
+for (const scenario of [
+    { name: 'defaults to merge', allowed: [true, true, true], expected: 'merge' },
+    { name: 'falls back to rebase', allowed: [false, true, true], expected: 'rebase' },
+    { name: 'uses only merge despite preference', allowed: [true, false, false], preference: 'squash', expected: 'merge' },
+    { name: 'uses only rebase', allowed: [false, true, false], expected: 'rebase' },
+    { name: 'uses only squash', allowed: [false, false, true], expected: 'squash' },
+    { name: 'honors caller squash preference', allowed: [true, true, true], preference: 'squash', expected: 'squash' },
+    { name: 'honors caller rebase preference', allowed: [true, true, true], preference: 'rebase', expected: 'rebase' },
+    { name: 'rejects disallowed preference', allowed: [false, true, true], preference: 'merge', error: /not enabled on GitHub/ },
+    { name: 'rejects no allowed methods', allowed: [false, false, false], error: /No supported PR merge method/ },
+    { name: 'rejects invalid preference', allowed: [true, true, true], preference: 'invalid', error: /git.releaseMergeMethod/ },
+]) {
+    test(`release merge selection ${scenario.name}`, async () => {
+        await withTemporaryRepositoryAsync(async (directory) => {
+            const project = fixture(directory);
+            if (scenario.preference !== undefined) {
+                require('./project-config-fixture').writeProjectConfig(project.repo, {
+                    git: { releaseMergeMethod: scenario.preference },
+                });
+                project.git('add', '.');
+                project.git('commit', '-m', 'Configure caller merge preference');
+                project.git('push', 'origin', 'main');
+            }
+            const [allow_merge_commit, allow_rebase_merge, allow_squash_merge] = scenario.allowed;
+            const services = fakeServices(project, {
+                repository: { allow_merge_commit, allow_rebase_merge, allow_squash_merge },
+            });
+            const run = () => release.release('patch', {
+                cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+                now: services.now, sleep: services.sleep, log: () => {},
+            });
+            if (scenario.error) {
+                await assert.rejects(run(), scenario.error);
+                assert.equal(services.calls.some(call => call[0] === 'git' && call[1] === 'push'), false);
+                assert.equal(services.calls.some(call => call[0] === 'gh' && call[1] === 'pr'), false);
+            } else {
+                await run();
+                const mergeCall = services.calls.find(call => call.includes('repos/owner/repo/pulls/7/merge'));
+                assert.ok(mergeCall.includes(`merge_method=${scenario.expected}`));
+                const sha = project.git('rev-parse', 'origin/main');
+                assert.match(project.git('ls-remote', 'origin', 'refs/tags/v1.3.6'), new RegExp(`^${sha}`, 'u'));
+            }
+        });
+    });
+}
+
+for (const legacy of [false, true]) {
+    test(`release retry preserves ${legacy ? 'legacy squash' : 'selected merge'} method`, async () => {
+        await withTemporaryRepositoryAsync(async (directory) => {
+            const project = fixture(directory);
+            const settings = { blockMerge: true };
+            const services = fakeServices(project, settings);
+            const dependencies = { cwd: project.repo, spawnSync: services.spawnSync, environment: {},
+                now: services.now, sleep: services.sleep, log: () => {} };
+            await assert.rejects(release.release('patch', dependencies), /Timed out waiting/);
+            const stateFile = path.join(project.repo, '.git', 'worktree-keeper-release.json');
+            const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+            assert.equal(state.mergeMethod, 'merge');
+            if (legacy) {
+                delete state.mergeMethod;
+                fs.writeFileSync(stateFile, JSON.stringify(state));
+            }
+            settings.blockMerge = false;
+            settings.repository = { allow_merge_commit: false, allow_rebase_merge: true };
+            const previousCalls = services.calls.length;
+            await release.release('patch', dependencies);
+            const mergeCall = services.calls.slice(previousCalls).find(call => call.includes('repos/owner/repo/pulls/7/merge'));
+            assert.ok(mergeCall.includes(`merge_method=${legacy ? 'squash' : 'merge'}`));
+        });
+    });
+}

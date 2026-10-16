@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const yaml = require('yaml');
+const { CONFIG_FILE, projectConfig } = require('./project-config');
 const requiredCondition = "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}";
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const pollIntervalMs = 5_000;
@@ -212,8 +213,15 @@ function prepare(exec, cwd, bump, log) {
     const remote = checked(exec, 'git', ['remote', 'get-url', 'origin'], cwd);
     const { host, slug } = originRepository(remote);
     const repository = github(exec, cwd, host, `repos/${slug}`, {});
-    if (repository.allow_squash_merge === false)
-        throw new ReleaseError('Release PRs require squash merging to be enabled.');
+    const configured = fs.existsSync(path.join(cwd, CONFIG_FILE))
+        ? projectConfig(cwd).git.releaseMergeMethod : undefined;
+    const allowed = ['merge', 'rebase', 'squash'].filter((method) =>
+        repository[{ merge: 'allow_merge_commit', rebase: 'allow_rebase_merge', squash: 'allow_squash_merge' }[method]] === true);
+    if (!allowed.length)
+        throw new ReleaseError('No supported PR merge method is enabled.');
+    const mergeMethod = allowed.length === 1 ? allowed[0] : configured || allowed[0];
+    if (!allowed.includes(mergeMethod))
+        throw new ReleaseError(`Configured release merge method ${mergeMethod} is not enabled on GitHub.`);
     const defaultBranch = repository.default_branch;
     if (typeof defaultBranch !== 'string' || !defaultBranch) {
         throw new ReleaseError('GitHub did not provide the default branch.');
@@ -234,7 +242,7 @@ function prepare(exec, cwd, bump, log) {
     if (remoteTag.status !== 2)
         throw new ReleaseError(`Could not check origin tag ${tag}: ${remoteTag.stderr.trim()}`);
     log(`Validated ${packageInfo.name}: ${packageInfo.version} -> ${version} on ${defaultBranch}.`);
-    return { host, slug, defaultBranch, name: packageInfo.name, version, tag };
+    return { host, slug, defaultBranch, name: packageInfo.name, version, tag, mergeMethod };
 }
 function makeVersionCommit(exec, cwd, bump, version) {
     checked(exec, 'npm', ['version', bump, '--no-git-tag-version', '--ignore-scripts'], cwd);
@@ -357,7 +365,7 @@ async function mergeRelease(exec, cwd, details, now, sleep, log) {
         // GitHub enforces required checks, reviews, and branch freshness on this request.
         const result = exec('gh', ['api', '--hostname', details.host, '--method', 'PUT',
             `repos/${details.slug}/pulls/${details.pr}/merge`,
-            '-f', 'merge_method=squash', '-f', `sha=${details.sha}`], { cwd });
+            '-f', `merge_method=${details.mergeMethod || 'squash'}`, '-f', `sha=${details.sha}`], { cwd });
         if (result.status === 0) {
             const merged = JSON.parse(result.stdout);
             if (merged.merged)

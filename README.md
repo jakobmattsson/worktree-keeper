@@ -32,7 +32,7 @@ Run `npm install` from the project root and commit the resulting `package-lock.j
 
 ### 2. `worktree-keeper.config.json`
 
-Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes` is an optional field described below. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
+Place this required file at the caller's Git root. All fields shown here are required and unknown fields are rejected. `git.checkpointPushRemotes` and `git.releaseMergeMethod` are optional fields described below. There are no built-in test-command defaults: each caller must define `tests.commands` explicitly for its own toolchain.
 
 ```json
 {
@@ -198,12 +198,33 @@ GitHub Actions workflow, with direct publishing enabled. The workflow runs tests
 and a package dry run, verifies that the tag matches both package versions, and
 publishes via OIDC. It needs no npm access token.
 
+This single workflow runs on pull requests, pushes to `main`, and `v*` tags.
+The `test` check runs the test suite on Node.js 20; `Test package` checks the
+package contents on Node.js 22. Both checks must pass before a tag can publish.
+Only tag pushes run the publish job. Keep the `package.yml` filename unchanged:
+npm trusted publishing is configured for that workflow file.
+
+Release merge selection reads the calling repository's root
+`worktree-keeper.config.json`, not the installed package's configuration:
+
+- If GitHub allows only one merge method, that method is used regardless of the preference.
+- If multiple methods are allowed, optional `git.releaseMergeMethod` selects
+  `"merge"` (merge commit), `"rebase"`, or `"squash"`. A configured method that
+  GitHub disallows causes the release to stop before creating a branch or PR.
+- Without a preference, merge commit is chosen first, then rebase.
+
+For example, add `"releaseMergeMethod": "rebase"` inside the existing `git` object.
+A release-only caller without a configuration file uses the same defaults.
+The chosen method is saved with release state and reused on retries; unfinished
+releases created by older versions retain their original squash behavior.
+
 From a clean repository root, run `npm run release -- patch`, `minor`, or `major`.
 The command fetches the default branch and uses a temporary detached worktree to
 increment the package and lockfile versions. Your current branch and local default
 branch stay unchanged, including when the default branch is checked out elsewhere.
-It pushes a `release/v<version>` branch and opens a release PR. GitHub must allow
-squash merging. The command waits up to 20 minutes for GitHub to accept the merge,
+It pushes a `release/v<version>` branch and opens a release PR. The merge method
+follows the calling repository's configuration and GitHub settings. The command
+waits up to 20 minutes for GitHub to accept the merge,
 respecting required checks, reviews, resolved conversations, and branch freshness.
 It never uses an administrator bypass or pushes directly to the default branch.
 
