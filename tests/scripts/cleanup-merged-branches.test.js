@@ -176,3 +176,84 @@ test('branch cleanup uses the caller configured remote and default branch', (t) 
   assert.match(output, /To apply this cleanup, run:\n {2}npm exec --no -- worktree-keeper cleanup-merged-branches --execute/);
   assert.doesNotMatch(output, /delete (local|remote) branch trunk/);
 });
+
+test('cleanup preserves a worktree and both branches if its tip changes after planning', (t) => {
+  const fixture = createRepository(t);
+  const plan = buildPlan(fixture.repository);
+  fs.writeFileSync(path.join(fixture.worktree, 'new-work.txt'), 'keep new commit\n');
+  git(fixture.worktree, 'add', 'new-work.txt');
+  git(fixture.worktree, 'commit', '-m', 'Continue work after planning');
+  const updatedTip = git(fixture.worktree, 'rev-parse', 'HEAD');
+  const output = [];
+
+  applyPlan(fixture.repository, plan, true, line => output.push(line));
+
+  assert.match(output.join('\n'), /Skip merged-feature: its local branch changed after planning/);
+  assert.equal(fs.readFileSync(path.join(fixture.worktree, 'new-work.txt'), 'utf8'), 'keep new commit\n');
+  assert.equal(git(fixture.repository, 'rev-parse', 'merged-feature'), updatedTip);
+  assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), true);
+});
+
+test('cleanup rechecks worktree identity immediately before removal', (t) => {
+  const fixture = createRepository(t);
+  const plan = buildPlan(fixture.repository);
+  const output = [];
+
+  applyPlan(fixture.repository, plan, true, line => {
+    output.push(line);
+    if (line.startsWith('Removing worktree ')) {
+      git(fixture.worktree, 'switch', '-c', 'new-work');
+    }
+  });
+
+  assert.match(output.join('\n'), /Skip merged-feature: its worktrees changed after planning/);
+  assert.equal(fs.existsSync(fixture.worktree), true);
+  assert.equal(git(fixture.worktree, 'branch', '--show-current'), 'new-work');
+  assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), true);
+  assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), true);
+});
+
+test('cleanup preserves a worktree dirtied or locked after planning', async (t) => {
+  for (const change of ['dirty', 'locked']) await t.test(change, (t) => {
+    const fixture = createRepository(t);
+    const plan = buildPlan(fixture.repository);
+    if (change === 'dirty') fs.writeFileSync(path.join(fixture.worktree, 'untracked.txt'), 'keep');
+    else git(fixture.repository, 'worktree', 'lock', fixture.worktree);
+
+    applyPlan(fixture.repository, plan, true, () => {});
+
+    assert.equal(fs.existsSync(fixture.worktree), true);
+    assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), true);
+    assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), true);
+  });
+});
+
+test('cleanup preserves a branch checked out in a new worktree after planning', (t) => {
+  const fixture = createRepository(t);
+  git(fixture.repository, 'worktree', 'remove', fixture.worktree);
+  const plan = buildPlan(fixture.repository);
+  git(fixture.repository, 'worktree', 'add', fixture.worktree, 'merged-feature');
+
+  applyPlan(fixture.repository, plan, true, () => {});
+
+  assert.equal(fs.existsSync(fixture.worktree), true);
+  assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), true);
+  assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), true);
+});
+
+test('cleanup rechecks branch checkouts immediately before deleting a local ref', (t) => {
+  const fixture = createRepository(t);
+  git(fixture.repository, 'worktree', 'remove', fixture.worktree);
+  const plan = buildPlan(fixture.repository);
+
+  applyPlan(fixture.repository, plan, true, line => {
+    if (line === 'Deleting local branch merged-feature') {
+      git(fixture.repository, 'worktree', 'add', fixture.worktree, 'merged-feature');
+    }
+  });
+
+  assert.equal(fs.existsSync(fixture.worktree), true);
+  assert.equal(git(fixture.worktree, 'branch', '--show-current'), 'merged-feature');
+  assert.equal(refExists(fixture.repository, 'refs/heads/merged-feature'), true);
+  assert.equal(refExists(fixture.remote, 'refs/heads/merged-feature'), true);
+});

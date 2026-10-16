@@ -42,7 +42,7 @@ function requiredDirectories(root, files) {
   for (const file of files) {
     const absolutePath = path.join(root, file);
     let directory = fs.lstatSync(absolutePath).isDirectory()
-      ? file
+      ? file.replace(/\/+$/u, '')
       : path.posix.dirname(file);
 
     while (directory !== '.') {
@@ -56,9 +56,15 @@ function requiredDirectories(root, files) {
 
 function findEmptyDirectories(root) {
   const required = requiredDirectories(root, listPresentFiles(root));
-  const empty = [];
 
   function visit(absoluteDirectory, relativeDirectory) {
+    // A nested repository owns its contents, even when its parent is ignored.
+    if (relativeDirectory !== '' && fs.lstatSync(path.join(absoluteDirectory, '.git'), {
+      throwIfNoEntry: false,
+    })) return { keep: true, directories: [] };
+
+    let keep = relativeDirectory === '' || required.has(relativeDirectory);
+    const directories = [];
     for (const entry of fs.readdirSync(absoluteDirectory, {
       withFileTypes: true,
     })) {
@@ -73,16 +79,14 @@ function findEmptyDirectories(root) {
         : entry.name;
       const absolutePath = path.join(absoluteDirectory, entry.name);
 
-      if (required.has(relativePath)) {
-        visit(absolutePath, relativePath);
-      } else {
-        empty.push(relativePath);
-      }
+      const child = visit(absolutePath, relativePath);
+      keep ||= child.keep;
+      directories.push(...child.directories);
     }
+    return { keep, directories: keep ? directories : [relativeDirectory] };
   }
 
-  visit(root, '');
-  return empty;
+  return visit(root, '').directories;
 }
 
 function removeEmptyDirectories(root, directories) {

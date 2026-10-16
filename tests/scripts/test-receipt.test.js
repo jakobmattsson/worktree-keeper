@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -132,4 +132,73 @@ test('npm test reuses a receipt and reruns after changes, on request, or in CI',
   fs.appendFileSync(path.join(root, 'scripts/project-config.js'), '// shared script changed\n');
   runTests();
   assert.equal(fs.readFileSync(counterPath, 'utf8'), 'xxxxx');
+});
+
+function createRunner(t, source) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-runner-regression-'));
+  t.after(() => {
+    fs.rmSync(receiptPath(root), { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  git(root, 'init', '-q');
+  writeProjectConfig(root, { tests: { commands: ['node test.cjs'] } });
+  fs.writeFileSync(path.join(root, 'code.txt'), 'tested');
+  fs.writeFileSync(path.join(root, 'test.cjs'), source);
+  git(root, 'add', '.');
+  git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'Base');
+  function invoke(command, ...args) {
+    const env = { ...process.env, CI: '' };
+    delete env.NODE_TEST_CONTEXT;
+    return spawnSync(process.execPath, [path.resolve(__dirname, '../../bin/worktree-keeper.js'), command, ...args], {
+      cwd: root, env, encoding: 'utf8',
+    });
+  }
+  return {
+    root,
+    run: (...args) => invoke('run-tests', ...args),
+    checkReceipt: () => invoke('check-test-receipt').status === 0,
+  };
+}
+
+test('a failed forced run invalidates the previous passing receipt', async (t) => {
+  for (const force of ['--force', 'rerun']) await t.test(force, (t) => {
+    const runner = createRunner(t, `
+      const fs = require('node:fs');
+      fs.appendFileSync('.git/executions', 'x');
+      if (fs.existsSync('.git/fail')) process.exit(1);
+    `);
+    assert.equal(runner.run().status, 0);
+    assert.equal(runner.checkReceipt(), true);
+    fs.writeFileSync(path.join(runner.root, '.git/fail'), 'fail');
+
+    assert.equal(runner.run(force).status, 1);
+    assert.equal(runner.checkReceipt(), false);
+    assert.equal(runner.run().status, 1);
+    assert.equal(fs.readFileSync(path.join(runner.root, '.git/executions'), 'utf8'), 'xxx');
+
+    fs.rmSync(path.join(runner.root, '.git/fail'));
+    assert.equal(runner.run().status, 0);
+    assert.equal(runner.checkReceipt(), true);
+    assert.match(runner.run().stdout, /Tests already passed/);
+    assert.equal(fs.readFileSync(path.join(runner.root, '.git/executions'), 'utf8'), 'xxxx');
+  });
+});
+
+test('a passing command cannot certify files modified while tests run', (t) => {
+  const runner = createRunner(t, `
+    const fs = require('node:fs');
+    if (fs.readFileSync('code.txt', 'utf8') !== 'tested') process.exit(1);
+    if (fs.existsSync('.git/change-during-run')) fs.writeFileSync('code.txt', 'untested');
+  `);
+  assert.equal(runner.run().status, 0);
+  assert.equal(runner.checkReceipt(), true);
+  fs.writeFileSync(path.join(runner.root, '.git/change-during-run'), 'change');
+
+  const result = runner.run('--force');
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /changed while tests ran/);
+  assert.equal(fs.readFileSync(path.join(runner.root, 'code.txt'), 'utf8'), 'untested');
+  assert.equal(runner.checkReceipt(), false);
+  assert.equal(runner.run().status, 1);
 });
