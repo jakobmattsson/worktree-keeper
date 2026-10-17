@@ -1,0 +1,326 @@
+CHECK-PROJECT: EXPECTED PROJECT ARCHITECTURE
+
+Purpose and scope
+  One project pins its Node/npm toolchain, installs the worktree-keeper Codex
+  lifecycle hooks, and runs reproducible PR checks. Published npm packages also
+  verify a release before publishing the tested version.
+
+  check-project reads local files at the Git root. It makes no network requests,
+  runs no project scripts, and changes no files. Failure exits with status 1.
+  Independent failures are reported together. Missing or unreadable prerequisites
+  can block dependent checks; the reported failures are not an exhaustive list
+  of problems behind those prerequisites. Fix them and run the command again.
+  --explain prints this entire document without loading or checking a project.
+
+Project configuration
+  A valid worktree-keeper.config.json is required at the Git root, along with
+  package.json. The normal configuration schema still applies.
+
+  Select the PR workflow by filename, in this order:
+    projectChecks.testWorkflow -> git.releaseTestWorkflow -> test.yml
+  Select required job names in this order:
+    projectChecks.requiredJobs -> git.releaseRequiredChecks -> ["test"]
+  For published packages, git.releaseRequiredChecks is mandatory and its names
+  are always added to the required jobs. Set git.releaseTestWorkflow to the
+  selected PR workflow for release verification. Published projects cannot
+  select different workflows for project checks and release verification.
+
+  Example configuration fields (merge into the full project configuration):
+    "git": {
+      "releaseTestWorkflow": "package.yml",
+      "releaseRequiredChecks": ["test"]
+    },
+    "projectChecks": {
+      "testWorkflow": "package.yml",
+      "requiredJobs": ["test"]
+    }
+  projectChecks is optional; when present it requires both testWorkflow and
+  requiredJobs. Omit it when release settings already select the desired jobs.
+
+Toolchain: package.json and all Node-based CI jobs
+  Pin exact versions in package.json with:
+    volta pin node@<exact-version> npm@<exact-version>
+  Both volta.node and volta.npm must be exact semantic versions. engines.node
+  must be a valid range satisfied by volta.node. If .nvmrc exists, its trimmed
+  version (optionally prefixed with v) must equal volta.node; align or remove it.
+
+  Install Volta locally and ensure its shims are first in PATH (volta setup).
+  In each CI job using setup-node, Volta, or direct Node/npm/npx/Volta commands:
+    - Check out the repository before one volta-cli/action setup step.
+    - Checkout and Volta setup must be unconditional and must not allow failure.
+    - Do not set node-version, npm-version, or package-json-path on Volta setup.
+    - Run Node/npm/npx commands only after Volta setup.
+    - Remove actions/setup-node, nvm use/install, volta install/pin/run, and
+      global npm install commands from CI. package.json selects the toolchain.
+
+  Minimal setup steps:
+    - uses: actions/checkout@v5
+    - uses: volta-cli/action@v5
+    - run: npm ci
+    - run: npm test
+
+Codex lifecycle hooks
+  .codex/hooks.json must contain the current worktree-keeper hooks exactly once
+  for each lifecycle event, in their expected order, without group conditions.
+  Unrelated hooks are allowed. Repair with:
+    worktree-keeper install-hooks
+  Hook installation does not itself grant Codex trust.
+
+All GitHub Actions workflows
+  Every .yml/.yaml file under .github/workflows must parse and declare jobs.
+  Where present, actions/checkout and volta-cli/action must use stable version
+  tags at major 5 or newer (v5, v5.0, v5.0.0, or newer). These are compatibility
+  floors, not latest-version recommendations. SHA and branch refs cannot be
+  verified offline and are rejected for these actions.
+
+  Runner labels must not contain moving *-latest images. Choose versioned
+  images suitable for the project, such as ubuntu-24.04. Direct labels, label
+  objects, and matrix.<key> references including matrix include are inspected.
+  Other dynamic runner expressions are not resolved.
+
+Required PR workflow and jobs
+  The selected workflow must declare pull_request. PR filters must not use
+  paths, paths-ignore, branches-ignore, or types. If branches is specified, it
+  must include git.defaultBranch literally.
+
+  Each required name must match exactly one static job display name (name), or
+  the job ID if name is absent. Expressions in required names are rejected.
+  Required jobs and all their needs dependencies must use local steps, must
+  not allow failure, and must not have conditions that skip required PR checks.
+  Accepted job conditions are absent, success(), ${{ success() }}, or exactly:
+    ${{ github.event_name == 'pull_request' }}
+
+  Each required test job must run unconditional npm ci before an unconditional
+  supported validation command, with neither step allowed to fail. Commands
+  must be direct run steps, exactly one of:
+    npm test
+    npm run test
+    npm run test:<name>       (name contains letters, digits, _ or -)
+    npm pack --dry-run
+    npm pack --dry-run --json
+  Shell wrappers, combined commands, and reusable workflows cannot establish
+  these requirements. Conditional reporting steps after tests are allowed.
+  An unconditional step either omits if or sets it to success() or
+  ${{ success() }}.
+
+  Matrix example: tests on three platforms and one static required gate:
+    jobs:
+      matrix-tests:
+        strategy:
+          matrix:
+            os: [ubuntu-24.04, macos-15, windows-2025]
+        runs-on: ${{ matrix.os }}
+        steps:
+          - uses: actions/checkout@v5
+          - uses: volta-cli/action@v5
+          - run: npm ci
+          - run: npm test
+      test:
+        needs: matrix-tests
+        runs-on: ubuntu-24.04
+        steps:
+          - uses: actions/checkout@v5
+          - uses: volta-cli/action@v5
+          - run: npm ci
+          - run: npm pack --dry-run
+  Configure the required name as "test". Its default success condition means it
+  only passes after the entire matrix succeeds; it also validates the package.
+  Keep this gate name static and unique. Matrix-generated check names alone do
+  not provide the single exact match required by release verification. Actual
+  GitHub check contexts and branch protection still need online verification.
+
+  If any matrix leg fails or is cancelled, the dependent test gate is normally
+  skipped, not failed. verify-release requires each configured release job to
+  conclude success, so a skipped gate blocks publication (even if the overall
+  workflow conclusion were success).
+
+  GitHub branch protection treats skipped jobs as acceptable status checks.
+  Requiring only the gate therefore does NOT guarantee a failing matrix blocks
+  merging. Also require every matrix test check in GitHub branch protection or
+  its active ruleset, using the exact check names observed in a PR run. Keep
+  those requirements aligned when matrix membership changes. They supplement
+  the static "test" name in git.releaseRequiredChecks; do not put dynamic matrix
+  names in that setting. Alternatively, use separate static required jobs for
+  each platform and list all of them in git.releaseRequiredChecks. A gate using
+  always() to fail explicitly on failed dependencies is not currently accepted
+  by check-project's required-job condition rules.
+
+Publication: packages without private: true
+  package.json version must be exact and stable (no prerelease). Commit a
+  package-lock.json or npm-shrinkwrap.json; existing lockfile version fields
+  must match the package version.
+
+  Exactly one workflow must contain a job with ID publish. It must have a
+  static display name and a step whose run is exactly npm publish. The workflow
+  must accept the current v<package-version> tag on push. The publish job must
+  either run in a workflow restricted to v-prefixed tag pushes, or use exactly:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+  The publish job must not allow failure.
+
+  In publish steps, run unconditional npm ci, then unconditional verify-release,
+  then npm publish. Neither install nor verification may allow failure.
+  Accepted direct verification commands:
+    worktree-keeper verify-release
+    npm exec --no -- worktree-keeper verify-release
+    node bin/worktree-keeper.js verify-release
+    node node_modules/worktree-keeper/bin/worktree-keeper.js verify-release
+  The node paths may also start with ./.
+
+  Verification must receive these environment inputs, directly on the step or
+  inherited from the job/workflow:
+    RELEASE_TAG: ${{ github.ref_name }}
+    GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
+  Set job permissions (or workflow permissions if the job has none) to include:
+    contents: read
+    id-token: write
+  contents: write is also accepted. The same toolchain rules apply to publishing.
+
+  private: true skips publication checks, but not toolchain, hooks, or PR checks.
+
+Online release policy and GitHub token setup
+  These are online installation requirements; check-project only verifies the
+  local declarations above. Use verify-release-protection to check the branch
+  policy and verify-release before publishing to check the release itself.
+
+  Configure the default branch from git.defaultBranch with every exact job name
+  in git.releaseRequiredChecks mandatory and "Require branches to be up to date
+  before merging" enabled. Choose either:
+    - Classic branch protection with strict status checks and enforcement for
+      administrators as well (no administrator bypass).
+    - Active branch rulesets requiring strict status checks, without any bypass
+      actors. Organization-inherited rulesets are included in verification.
+  Merge queues are not currently an alternative to this strict policy. For the
+  matrix example, also require its matrix checks as described above.
+
+  Create a fine-grained GitHub PAT or GitHub App installation token with access
+  to this repository and these repository permissions:
+    Administration: read
+    Contents: read
+    Pull requests: read
+    Actions: read
+  For repository rulesets, Administration: write is additionally needed because
+  GitHub only exposes bypass actors to callers with write access to the ruleset.
+  For organization-inherited rulesets, repository Administration permission
+  alone does not establish write access to the organization-owned ruleset.
+  Consult GitHub's organization ruleset endpoint documentation for supported
+  token types and organization permissions (the fine-grained token section):
+    https://docs.github.com/en/rest/orgs/rules#get-an-organization-repository-ruleset
+  The token must also have write access to the contributing ruleset for GitHub
+  to expose bypass actors. Missing bypass information causes verification to
+  fail; confirm access with verify-release-protection.
+
+  Recommended Actions secret name: RELEASE_POLICY_TOKEN. A maintainer with
+  permission to manage Actions secrets can save it with:
+    gh secret set RELEASE_POLICY_TOKEN --repo OWNER/REPO
+  Paste the token at the interactive prompt. Map the secret to GH_TOKEN on the
+  verification step. This GitHub token verifies policy and CI; npm publishing
+  uses a separate OIDC identity. The ordinary workflow GITHUB_TOKEN cannot gain
+  Administration permissions through workflow YAML. Rotate the policy token
+  when it expires, or arrange short-lived GitHub App tokens in your workflow.
+  Fork PRs do not receive repository secrets; do not expose this token by
+  running fork code with pull_request_target.
+
+  verify-release-protection uses GITHUB_BASE_REF, or git.defaultBranch outside
+  PR CI. It can be run before tests in a required trusted PR job. verify-release
+  checks matching package/tag/lockfile versions, that the tagged commit belongs
+  to the default branch and is the merge commit of a same-repository merged
+  release/v<version> PR, and the latest selected PR workflow run and required
+  jobs. The workflow and all matching required jobs must conclude success.
+  A manually created tag without that release PR is rejected. API access errors
+  and unverifiable protection settings stop verification. Use the release
+  command to prepare the release PR and tag through the supported workflow.
+
+Complete npm trusted-publishing example with Volta
+  Choose one layout; keep exactly one job with ID publish across all workflows:
+    - Keep publishing in the existing package.yml alongside PR checks. Merge
+      the publish job below into that file, retain its pull_request trigger,
+      add push.tags: ['v*'], and set the publish job condition exactly to:
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+      Keep git.releaseTestWorkflow and the npm trusted-publisher filename set
+      to package.yml. Do not also create a publish job in another workflow.
+    - Move publishing to a separate publish.yml as shown below. Remove the old
+      publish job from package.yml (and its tag trigger if no other job needs
+      it). Keep PR checks in package.yml and git.releaseTestWorkflow pointing
+      there. Set the npm trusted-publisher filename to publish.yml.
+
+  The complete example below uses the second layout for a public npm package.
+  Adapt an existing publish.yml instead of adding a duplicate publish job. Install
+  worktree-keeper as a project development dependency so npm ci makes the
+  verification command available. The GitHub-hosted Ubuntu runner provides gh.
+
+  Pin Node >=22.14.0 and npm >=11.5.1 in package.json for npm trusted publishing;
+  for example, exact pins 22.14.0 and 11.21.0 meet those minimums. Do not install
+  another npm globally in CI. In the package's npmjs.com settings, add a GitHub
+  Actions trusted publisher with the exact owner, repository and workflow
+  filename publish.yml for the separate layout, or package.yml for the combined
+  layout (filename only). Enable direct npm publish in its
+  allowed actions; staged publishing alone does not support this workflow.
+  If you configure an npm trusted-publisher environment name, add the matching
+  environment to the publish job. Use GitHub-hosted runners; npm does not
+  currently support self-hosted runners for trusted publishing.
+
+  Set package.json publication settings for this public npm package:
+    "publishConfig": {
+      "registry": "https://registry.npmjs.org/",
+      "access": "public"
+    }
+  Use the package's intended visibility instead if publishing a private scoped
+  npm package. npm package visibility is separate from package.json private:
+  true, which prevents npm publication altogether.
+
+  Complete .github/workflows/publish.yml:
+    name: Publish
+    on:
+      push:
+        tags: ['v*']
+    jobs:
+      publish:
+        runs-on: ubuntu-24.04
+        permissions:
+          contents: read
+          id-token: write
+        steps:
+          - uses: actions/checkout@v5
+          - uses: volta-cli/action@v5
+            with:
+              registry-url: https://registry.npmjs.org
+          - run: npm ci
+          - name: Verify release
+            env:
+              GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
+              RELEASE_TAG: ${{ github.ref_name }}
+            run: npm exec --no -- worktree-keeper verify-release
+          - run: npm publish
+
+  Volta selects the pinned tools and its registry-url input configures npm's
+  registry, replacing that setup-node responsibility. publishConfig also pins
+  the publication target. npm publish detects GitHub's OIDC environment and
+  exchanges its identity for a short-lived npm credential; id-token: write
+  enables this and the npm trusted-publisher entry authorizes the workflow.
+  No NPM_TOKEN, npm login, or secret NODE_AUTH_TOKEN is needed to publish.
+  Do not carry an old npm publishing token into this workflow. If npm ci needs
+  private dependencies, configure their read authentication separately; OIDC
+  publishing does not authenticate dependency installation. Add any necessary
+  build step before publication, keeping npm publish as its own direct step.
+
+  check-project verifies supported local workflow structure, not the npm OIDC
+  minimum versions, trusted-publisher registration, package visibility, registry
+  credentials, or actual publishing access. Verify those external settings too.
+  Upstream references for provider-specific setup and changing prerequisites:
+    https://docs.npmjs.com/trusted-publishers
+    https://github.com/volta-cli/action#readme
+    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
+
+What a passing check does and does not establish
+  Passing means the supported local configuration matches these conventions.
+  It does not prove tests ran or passed, inspect test-script behavior, validate
+  installed dependency versions, or check Git remotes and ignored files.
+  It cannot confirm actual GitHub branch protection, token/secret access,
+  successful workflow runs, or npm trusted publisher configuration. Those need
+  online verification; verify-release handles the release checks it supports.
+
+Using this check in the test chain
+  Add "pretest": "worktree-keeper check-project" to package.json, prepending it
+  to any existing pretest command. This also runs before cached test receipts
+  can skip the test runner. Putting the check only in tests.commands does not
+  guarantee it runs when a cached receipt is reused.
