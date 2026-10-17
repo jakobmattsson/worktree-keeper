@@ -199,8 +199,14 @@ Online release policy and GitHub token setup
     Actions: read
   For repository rulesets, Administration: write is additionally needed because
   GitHub only exposes bypass actors to callers with write access to the ruleset.
-  For organization-inherited rulesets, grant the corresponding ruleset access
-  at that level. Missing bypass information causes verification to fail.
+  For organization-inherited rulesets, repository Administration permission
+  alone does not establish write access to the organization-owned ruleset.
+  Consult GitHub's organization ruleset endpoint documentation for supported
+  token types and organization permissions (the fine-grained token section):
+    https://docs.github.com/en/rest/orgs/rules#get-an-organization-repository-ruleset
+  The token must also have write access to the contributing ruleset for GitHub
+  to expose bypass actors. Missing bypass information causes verification to
+  fail; confirm access with verify-release-protection.
 
   Recommended Actions secret name: RELEASE_POLICY_TOKEN. A maintainer with
   permission to manage Actions secrets can save it with:
@@ -224,9 +230,20 @@ Online release policy and GitHub token setup
   command to prepare the release PR and tag through the supported workflow.
 
 Complete npm trusted-publishing example with Volta
-  This example publishes a public package from .github/workflows/publish.yml.
-  Keep git.releaseTestWorkflow pointing to the PR workflow (package.yml in the
-  earlier example), not this separate publish-only workflow. Install
+  Choose one layout; keep exactly one job with ID publish across all workflows:
+    - Keep publishing in the existing package.yml alongside PR checks. Merge
+      the publish job below into that file, retain its pull_request trigger,
+      add push.tags: ['v*'], and set the publish job condition exactly to:
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+      Keep git.releaseTestWorkflow and the npm trusted-publisher filename set
+      to package.yml. Do not also create a publish job in another workflow.
+    - Move publishing to a separate publish.yml as shown below. Remove the old
+      publish job from package.yml (and its tag trigger if no other job needs
+      it). Keep PR checks in package.yml and git.releaseTestWorkflow pointing
+      there. Set the npm trusted-publisher filename to publish.yml.
+
+  The complete example below uses the second layout for a public npm package.
+  Adapt an existing publish.yml instead of adding a duplicate publish job. Install
   worktree-keeper as a project development dependency so npm ci makes the
   verification command available. The GitHub-hosted Ubuntu runner provides gh.
 
@@ -234,7 +251,8 @@ Complete npm trusted-publishing example with Volta
   for example, exact pins 22.14.0 and 11.21.0 meet those minimums. Do not install
   another npm globally in CI. In the package's npmjs.com settings, add a GitHub
   Actions trusted publisher with the exact owner, repository and workflow
-  filename publish.yml (filename only). Enable direct npm publish in its
+  filename publish.yml for the separate layout, or package.yml for the combined
+  layout (filename only). Enable direct npm publish in its
   allowed actions; staged publishing alone does not support this workflow.
   If you configure an npm trusted-publisher environment name, add the matching
   environment to the publish job. Use GitHub-hosted runners; npm does not
