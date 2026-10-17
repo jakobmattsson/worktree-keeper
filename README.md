@@ -203,76 +203,11 @@ does not grant trust automatically.
 
 ## Check project conventions locally
 
-Run `worktree-keeper check-project` from any directory in a repository to validate
-its development configuration. The command reads local files, makes no network
-requests, runs no project scripts, and changes no files. It reports errors by
-category and exits with status 1 on any failure.
-
-The checks cover:
-
-- **Tools:** exact `volta.node` and `volta.npm` pins, Node compatibility with
-  `engines.node`, and any remaining `.nvmrc` matching the Node pin. Node-based CI
-  jobs must check out the project and use `volta-cli/action` before Node/npm
-  commands, without competing setup actions or toolchain overrides.
-- **Hooks:** the lifecycle hooks supplied by `install-hooks` must be present once
-  each, use current definitions, and have no group conditions. Unrelated hooks
-  are allowed. Run `worktree-keeper install-hooks` to repair old definitions.
-- **CI:** all workflows must use `actions/checkout@v5` or newer and
-  `volta-cli/action@v5` or newer when those actions are present. These minimums
-  avoid their deprecated Node.js 20 runtimes; stable version tags are required
-  because SHA and branch refs cannot be verified offline. Runner labels must
-  avoid moving `*-latest` images; use a versioned image such as `ubuntu-24.04`.
-  Direct labels, label objects, and `matrix.<key>` references (including matrix
-  `include` entries) are checked. Other dynamic runner expressions are not resolved.
-  These checks catch known configuration issues, not every possible GitHub annotation.
-  The selected workflow must run on PRs targeting the default branch,
-  without path or event-type filters. Required jobs and their dependencies must
-  not skip PR checks or allow failure. Required test jobs must run `npm ci`
-  before tests or package validation, with neither step conditional or allowed
-  to fail.
-- **Publication:** for packages without `private: true`, package and lockfile
-  versions must match. The publish workflow must support the release tag, run
-  `npm ci` and then `verify-release` before `npm publish`, declare the verifier's
-  token/tag inputs, and grant Contents read and OIDC write permissions. Configured
-  release checks must exist in the selected PR workflow. Private packages skip
-  publication checks.
-
-By default, the PR workflow is `git.releaseTestWorkflow` or `test.yml`, and required
-job names come from `git.releaseRequiredChecks` or default to `test`. To select
-other names, add this optional section to `worktree-keeper.config.json`:
-
-```json
-"projectChecks": {
-  "testWorkflow": "ci.yml",
-  "requiredJobs": ["Full test suite", "Test package"]
-}
-```
-
-Job names are static display names (`name`), or job IDs when no display name is
-set. Published projects must select the same workflow as release verification;
-`git.releaseRequiredChecks` are always checked in addition to explicit required
-jobs. These are declared local requirements: checking actual branch protection,
-secret access, successful GitHub runs, and npm trusted publisher settings remains
-an online operation outside this command.
-
-Static inspection supports direct `npm test`, `npm run test`,
-`npm run test:<name>`, and `npm pack --dry-run` (optionally with `--json`).
-Install/test steps hidden inside shell wrappers or reusable workflows cannot be
-verified and fail with an explanation. Conditional reporting steps after tests
-are allowed. The command does not inspect the test scripts' internal behavior,
-validate installed dependency versions, or check Git remotes and ignored files.
-
-For a normal npm test chain, add a `pretest` script (prepend to an existing one
-rather than replacing it):
-
-```json
-"pretest": "worktree-keeper check-project"
-```
-
-This runs the checks before `npm test`, including before `run-tests` can reuse a
-cached test receipt. The command can also be placed first in `tests.commands`,
-but that placement alone does not run it when the whole test chain is skipped
-through receipt reuse. This repository uses `pretest` with its local CLI path.
+Run `worktree-keeper check-project` to check the local project configuration.
+Run `worktree-keeper check-project --explain` for the complete expected
+architecture, requirements, configuration examples, and verification limits.
+The command prints the bundled [formal requirements](scripts/check-project-requirements.txt),
+which can also be read without a repository or project configuration.
 
 ## Publish an npm release
 

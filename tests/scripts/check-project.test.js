@@ -179,3 +179,80 @@ test('accepts Node24 action version floors, newer stable tags, and pinned matrix
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
 });
+
+test('explain prints the bundled requirements without a repository or configuration', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-project-explain-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const result = spawnSync(process.execPath, [cli, 'check-project', '--explain'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout, fs.readFileSync(path.resolve(__dirname, '../../scripts/check-project-requirements.txt'), 'utf8'));
+  assert.deepEqual(fs.readdirSync(root), []);
+});
+
+test('always points to the complete explanation on success and failure', t => {
+  const f = fixture(t);
+  assert.match(f.run().stdout, /check-project --explain/);
+  delete f.manifest.volta;
+  f.save();
+  assert.match(f.run().stdout, /check-project --explain/);
+  f.write('worktree-keeper.config.json', '{');
+  const result = f.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /check-project --explain/);
+});
+
+test('reports independent runner, action, toolchain, job and publication errors together', t => {
+  const f = fixture(t, true);
+  delete f.manifest.volta;
+  f.workflow.jobs.test['runs-on'] = '${{ matrix.os }}';
+  f.workflow.jobs.test.strategy = { matrix: { os: ['macos-latest', 'windows-latest'] } };
+  f.workflow.jobs.test.steps[0].uses = 'actions/checkout@v4';
+  f.workflow.jobs.test.steps[1].uses = 'actions/setup-node@v4';
+  f.workflow.jobs.test.steps.at(-1).if = '${{ false }}';
+  delete f.config.git.releaseRequiredChecks;
+  f.publishing.jobs.publish.steps.splice(3, 1);
+  delete f.publishing.jobs.publish.permissions['id-token'];
+  f.save();
+  const result = f.run();
+  assert.equal(result.status, 1);
+  for (const message of [/macos-latest, windows-latest/, /found actions\/checkout@v4/, /volta.node/, /volta.npm/,
+    /use volta-cli\/action/, /competing/, /unconditional npm ci/, /Configure git.releaseRequiredChecks/,
+    /verify-release unconditionally/, /id-token: write/]) assert.match(result.stderr, message);
+  assert.doesNotMatch(result.stderr, /Cannot read properties/);
+});
+
+test('missing workflow explains selection and does not hide publication failures', t => {
+  const f = fixture(t, true);
+  f.config.git.releaseTestWorkflow = 'missing.yml';
+  f.manifest.version = '1.2.3-beta.1';
+  f.save();
+  const result = f.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /selected by git.releaseTestWorkflow/);
+  assert.match(result.stderr, /projectChecks.testWorkflow/);
+  assert.match(result.stderr, /PR checks are blocked/);
+  assert.match(result.stderr, /exact stable version/);
+});
+
+test('malformed workflow does not hide failures in another workflow', t => {
+  const f = fixture(t, true);
+  f.publishing.jobs.publish.steps[0].uses = 'actions/checkout@v4';
+  f.save();
+  f.write('.github/workflows/aaa.yml', 'jobs: [');
+  const result = f.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /aaa.yml/);
+  assert.match(result.stderr, /package.yml\/publish: found actions\/checkout@v4/);
+});
+
+test('checks every required job when another required name cannot be resolved', t => {
+  const f = fixture(t);
+  f.config.projectChecks = { testWorkflow: 'test.yml', requiredJobs: ['missing', 'test'] };
+  f.workflow.jobs.test.steps.at(-1).run = 'bash tests.sh';
+  f.save();
+  const result = f.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /required job missing must have a unique static name/);
+  assert.match(result.stderr, /test.yml\/test: run unconditional npm ci/);
+});
