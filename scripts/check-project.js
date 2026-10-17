@@ -93,10 +93,8 @@ function checkProject(cwd = process.cwd()) {
     requireThat(typeof manifest.engines?.node === 'string' && semver.validRange(manifest.engines.node)
       && semver.satisfies(manifest.volta?.node, manifest.engines.node),
     'package.json: volta.node must satisfy engines.node.');
-    if (fs.existsSync(path.join(root, '.nvmrc'))) {
-      requireThat(fs.readFileSync(path.join(root, '.nvmrc'), 'utf8').trim().replace(/^v/u, '') === manifest.volta?.node,
-        '.nvmrc conflicts with volta.node; remove it or align the version.');
-    }
+    requireThat(!fs.existsSync(path.join(root, '.nvmrc')),
+      '.nvmrc must be removed; package.json volta pins select the Node and npm versions.');
   });
 
   for (const [file, workflow] of workflows) {
