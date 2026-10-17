@@ -41,8 +41,8 @@ Toolchain: package.json and all Node-based CI jobs
   Pin exact versions in package.json with:
     volta pin node@<exact-version> npm@<exact-version>
   Both volta.node and volta.npm must be exact semantic versions. engines.node
-  must be a valid range satisfied by volta.node. If .nvmrc exists, its trimmed
-  version (optionally prefixed with v) must equal volta.node; align or remove it.
+  must be a valid range satisfied by volta.node. Remove .nvmrc even when its
+  version matches volta.node; package.json volta pins select Node and npm.
 
   Install Volta locally and ensure its shims are first in PATH (volta setup).
   In each CI job using setup-node, Volta, or direct Node/npm/npx/Volta commands:
