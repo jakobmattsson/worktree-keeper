@@ -128,6 +128,22 @@ Required PR workflow and jobs
   not provide the single exact match required by release verification. Actual
   GitHub check contexts and branch protection still need online verification.
 
+  If any matrix leg fails or is cancelled, the dependent test gate is normally
+  skipped, not failed. verify-release requires each configured release job to
+  conclude success, so a skipped gate blocks publication (even if the overall
+  workflow conclusion were success).
+
+  GitHub branch protection treats skipped jobs as acceptable status checks.
+  Requiring only the gate therefore does NOT guarantee a failing matrix blocks
+  merging. Also require every matrix test check in GitHub branch protection or
+  its active ruleset, using the exact check names observed in a PR run. Keep
+  those requirements aligned when matrix membership changes. They supplement
+  the static "test" name in git.releaseRequiredChecks; do not put dynamic matrix
+  names in that setting. Alternatively, use separate static required jobs for
+  each platform and list all of them in git.releaseRequiredChecks. A gate using
+  always() to fail explicitly on failed dependencies is not currently accepted
+  by check-project's required-job condition rules.
+
 Publication: packages without private: true
   package.json version must be exact and stable (no prerelease). Commit a
   package-lock.json or npm-shrinkwrap.json; existing lockfile version fields
@@ -152,13 +168,129 @@ Publication: packages without private: true
   Verification must receive these environment inputs, directly on the step or
   inherited from the job/workflow:
     RELEASE_TAG: ${{ github.ref_name }}
-    GH_TOKEN: <a token declaration with access for release verification>
+    GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
   Set job permissions (or workflow permissions if the job has none) to include:
     contents: read
     id-token: write
   contents: write is also accepted. The same toolchain rules apply to publishing.
 
   private: true skips publication checks, but not toolchain, hooks, or PR checks.
+
+Online release policy and GitHub token setup
+  These are online installation requirements; check-project only verifies the
+  local declarations above. Use verify-release-protection to check the branch
+  policy and verify-release before publishing to check the release itself.
+
+  Configure the default branch from git.defaultBranch with every exact job name
+  in git.releaseRequiredChecks mandatory and "Require branches to be up to date
+  before merging" enabled. Choose either:
+    - Classic branch protection with strict status checks and enforcement for
+      administrators as well (no administrator bypass).
+    - Active branch rulesets requiring strict status checks, without any bypass
+      actors. Organization-inherited rulesets are included in verification.
+  Merge queues are not currently an alternative to this strict policy. For the
+  matrix example, also require its matrix checks as described above.
+
+  Create a fine-grained GitHub PAT or GitHub App installation token with access
+  to this repository and these repository permissions:
+    Administration: read
+    Contents: read
+    Pull requests: read
+    Actions: read
+  For repository rulesets, Administration: write is additionally needed because
+  GitHub only exposes bypass actors to callers with write access to the ruleset.
+  For organization-inherited rulesets, grant the corresponding ruleset access
+  at that level. Missing bypass information causes verification to fail.
+
+  Recommended Actions secret name: RELEASE_POLICY_TOKEN. A maintainer with
+  permission to manage Actions secrets can save it with:
+    gh secret set RELEASE_POLICY_TOKEN --repo OWNER/REPO
+  Paste the token at the interactive prompt. Map the secret to GH_TOKEN on the
+  verification step. This GitHub token verifies policy and CI; npm publishing
+  uses a separate OIDC identity. The ordinary workflow GITHUB_TOKEN cannot gain
+  Administration permissions through workflow YAML. Rotate the policy token
+  when it expires, or arrange short-lived GitHub App tokens in your workflow.
+  Fork PRs do not receive repository secrets; do not expose this token by
+  running fork code with pull_request_target.
+
+  verify-release-protection uses GITHUB_BASE_REF, or git.defaultBranch outside
+  PR CI. It can be run before tests in a required trusted PR job. verify-release
+  checks matching package/tag/lockfile versions, that the tagged commit belongs
+  to the default branch and is the merge commit of a same-repository merged
+  release/v<version> PR, and the latest selected PR workflow run and required
+  jobs. The workflow and all matching required jobs must conclude success.
+  A manually created tag without that release PR is rejected. API access errors
+  and unverifiable protection settings stop verification. Use the release
+  command to prepare the release PR and tag through the supported workflow.
+
+Complete npm trusted-publishing example with Volta
+  This example publishes a public package from .github/workflows/publish.yml.
+  Keep git.releaseTestWorkflow pointing to the PR workflow (package.yml in the
+  earlier example), not this separate publish-only workflow. Install
+  worktree-keeper as a project development dependency so npm ci makes the
+  verification command available. The GitHub-hosted Ubuntu runner provides gh.
+
+  Pin Node >=22.14.0 and npm >=11.5.1 in package.json for npm trusted publishing;
+  for example, exact pins 22.14.0 and 11.21.0 meet those minimums. Do not install
+  another npm globally in CI. In the package's npmjs.com settings, add a GitHub
+  Actions trusted publisher with the exact owner, repository and workflow
+  filename publish.yml (filename only). Enable direct npm publish in its
+  allowed actions; staged publishing alone does not support this workflow.
+  If you configure an npm trusted-publisher environment name, add the matching
+  environment to the publish job. Use GitHub-hosted runners; npm does not
+  currently support self-hosted runners for trusted publishing.
+
+  Set package.json publication settings for this public npm package:
+    "publishConfig": {
+      "registry": "https://registry.npmjs.org/",
+      "access": "public"
+    }
+  Use the package's intended visibility instead if publishing a private scoped
+  npm package. npm package visibility is separate from package.json private:
+  true, which prevents npm publication altogether.
+
+  Complete .github/workflows/publish.yml:
+    name: Publish
+    on:
+      push:
+        tags: ['v*']
+    jobs:
+      publish:
+        runs-on: ubuntu-24.04
+        permissions:
+          contents: read
+          id-token: write
+        steps:
+          - uses: actions/checkout@v5
+          - uses: volta-cli/action@v5
+            with:
+              registry-url: https://registry.npmjs.org
+          - run: npm ci
+          - name: Verify release
+            env:
+              GH_TOKEN: ${{ secrets.RELEASE_POLICY_TOKEN }}
+              RELEASE_TAG: ${{ github.ref_name }}
+            run: npm exec --no -- worktree-keeper verify-release
+          - run: npm publish
+
+  Volta selects the pinned tools and its registry-url input configures npm's
+  registry, replacing that setup-node responsibility. publishConfig also pins
+  the publication target. npm publish detects GitHub's OIDC environment and
+  exchanges its identity for a short-lived npm credential; id-token: write
+  enables this and the npm trusted-publisher entry authorizes the workflow.
+  No NPM_TOKEN, npm login, or secret NODE_AUTH_TOKEN is needed to publish.
+  Do not carry an old npm publishing token into this workflow. If npm ci needs
+  private dependencies, configure their read authentication separately; OIDC
+  publishing does not authenticate dependency installation. Add any necessary
+  build step before publication, keeping npm publish as its own direct step.
+
+  check-project verifies supported local workflow structure, not the npm OIDC
+  minimum versions, trusted-publisher registration, package visibility, registry
+  credentials, or actual publishing access. Verify those external settings too.
+  Upstream references for provider-specific setup and changing prerequisites:
+    https://docs.npmjs.com/trusted-publishers
+    https://github.com/volta-cli/action#readme
+    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
 
 What a passing check does and does not establish
   Passing means the supported local configuration matches these conventions.
