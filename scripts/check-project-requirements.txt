@@ -100,7 +100,8 @@ Required PR workflow and jobs
     npm pack --dry-run --json
   Shell wrappers, combined commands, and reusable workflows cannot establish
   these requirements. Conditional reporting steps after tests are allowed.
-  An unconditional step has no if, success(), or ${{ success() }}.
+  An unconditional step either omits if or sets it to success() or
+  ${{ success() }}.
 
   Matrix example: tests on three platforms and one static required gate:
     jobs:
