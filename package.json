@@ -1,6 +1,6 @@
 {
   "name": "worktree-keeper",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Shared repository test, Git worktree, and Codex hook commands",
   "license": "MIT",
   "repository": {
